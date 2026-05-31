@@ -15,17 +15,16 @@ func newGather() *cobra.Command {
 	var expand int
 
 	cmd := &cobra.Command{
-		Use:   "gather <key@version> [query]",
+		Use:   "gather <key[@version]> [query]",
 		Short: "Search plus expanded operation details",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ref := args[0]
 			query := ""
 			if len(args) > 1 {
 				query = args[1]
 			}
 
-			_, key, version, doc, index, err := mustLoad(ref)
+			_, key, version, doc, index, err := mustLoad(args[0])
 			if err != nil {
 				return err
 			}
@@ -37,10 +36,10 @@ func newGather() *cobra.Command {
 					return err
 				}
 				return out.JSON(map[string]any{
-					"ref":     ref,
-					"key":     key,
-					"version": version,
-					"mode":    "exact",
+					"ref":        formatRef(key, version),
+					"key":        key,
+					"version":    version,
+					"mode":       "exact",
 					"operations": []any{op},
 				})
 			}
@@ -52,7 +51,7 @@ func newGather() *cobra.Command {
 			hits := search.Query(index, query, limit, pathPrefix, method)
 			if len(hits) == 0 {
 				return out.JSON(map[string]any{
-					"ref": ref, "key": key, "version": version,
+					"ref": formatRef(key, version), "key": key, "version": version,
 					"mode": "search", "query": query, "hits": hits, "operations": []any{},
 				})
 			}
@@ -74,12 +73,12 @@ func newGather() *cobra.Command {
 			}
 
 			return out.JSON(map[string]any{
-				"ref":     ref,
-				"key":     key,
-				"version": version,
-				"mode":    "search",
-				"query":   query,
-				"hits":    hits,
+				"ref":        formatRef(key, version),
+				"key":        key,
+				"version":    version,
+				"mode":       "search",
+				"query":      query,
+				"hits":       hits,
 				"operations": operations,
 			})
 		},

@@ -15,11 +15,19 @@ func openStore() (*store.Store, error) {
 }
 
 func mustRef(ref string) (string, string, error) {
-	r, err := store.ParseRef(ref)
+	st, err := openStore()
+	if err != nil {
+		return "", "", err
+	}
+	r, err := st.ResolveRef(ref)
 	if err != nil {
 		return "", "", err
 	}
 	return r.Key, r.Version, nil
+}
+
+func formatRef(key, version string) string {
+	return key + "@" + version
 }
 
 func mustLoad(ref string) (*store.Store, string, string, map[string]any, []spec.OperationIndex, error) {

@@ -174,6 +174,34 @@ func (s *Store) VersionsForKey(key string) ([]string, error) {
 	return out, nil
 }
 
+// LatestVersion returns the highest stored version for key using semver when possible.
+func (s *Store) LatestVersion(key string) (string, error) {
+	vers, err := s.VersionsForKey(key)
+	if err != nil {
+		return "", err
+	}
+	if len(vers) == 0 {
+		return "", fmt.Errorf("no versions stored for key %q (run: openstash add)", key)
+	}
+	return maxVersion(vers), nil
+}
+
+// ResolveRef parses key, key@version, or key@ and resolves an omitted version to the latest stored one.
+func (s *Store) ResolveRef(ref string) (spec.Ref, error) {
+	r, err := ParseRef(ref)
+	if err != nil {
+		return spec.Ref{}, err
+	}
+	if r.Version != "" {
+		return r, nil
+	}
+	version, err := s.LatestVersion(r.Key)
+	if err != nil {
+		return spec.Ref{}, err
+	}
+	return spec.Ref{Key: r.Key, Version: version}, nil
+}
+
 func writeJSON(path string, v any) error {
 	f, err := os.Create(path)
 	if err != nil {
@@ -205,18 +233,21 @@ func unsanitize(s string) string {
 	return s
 }
 
-// ParseRef splits key@version or returns key with empty version.
+// ParseRef splits key@version. A bare key or trailing @ means version is omitted.
 func ParseRef(ref string) (spec.Ref, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return spec.Ref{}, fmt.Errorf("empty ref")
 	}
 	at := strings.LastIndex(ref, "@")
-	if at <= 0 || at == len(ref)-1 {
-		return spec.Ref{}, fmt.Errorf("ref must be key@version (e.g. gitea@1.0.0)")
+	if at == -1 {
+		return spec.Ref{Key: ref}, nil
+	}
+	if at == 0 {
+		return spec.Ref{}, fmt.Errorf("invalid ref: missing key before @")
 	}
 	return spec.Ref{
 		Key:     ref[:at],
-		Version: ref[at+1:],
+		Version: strings.TrimSpace(ref[at+1:]),
 	}, nil
 }

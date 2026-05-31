@@ -11,28 +11,27 @@ func newSearch() *cobra.Command {
 	var pathPrefix, method string
 
 	cmd := &cobra.Command{
-		Use:   "search <key@version> <query>",
+		Use:   "search <key[@version]> [query]",
 		Short: "Slim search for matching endpoints",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ref := args[0]
 			query := ""
 			if len(args) > 1 {
 				query = args[1]
 			}
 
-			_, key, version, _, index, err := mustLoad(ref)
+			_, key, version, _, index, err := mustLoad(args[0])
 			if err != nil {
 				return err
 			}
 
 			hits := search.Query(index, query, limit, pathPrefix, method)
 			return out.JSON(map[string]any{
-				"ref":   ref,
-				"key":   key,
+				"ref":     formatRef(key, version),
+				"key":     key,
 				"version": version,
-				"query": query,
-				"hits":  hits,
+				"query":   query,
+				"hits":    hits,
 			})
 		},
 	}

@@ -8,12 +8,11 @@ import (
 
 func newRefresh() *cobra.Command {
 	return &cobra.Command{
-		Use:   "refresh <key@version>",
+		Use:   "refresh <key[@version]>",
 		Short: "Check source for a newer spec version",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ref := args[0]
-			st, key, version, doc, _, err := mustLoad(ref)
+			st, key, version, doc, _, err := mustLoad(args[0])
 			if err != nil {
 				return err
 			}
@@ -32,9 +31,9 @@ func newRefresh() *cobra.Command {
 			remoteVer := spec.InfoVersion(remote)
 
 			result := map[string]any{
-				"ref":            ref,
-				"storedVersion":  storedVer,
-				"remoteVersion":  remoteVer,
+				"ref":             formatRef(key, version),
+				"storedVersion":   storedVer,
+				"remoteVersion":   remoteVer,
 				"updateAvailable": remoteVer != "" && remoteVer != storedVer,
 			}
 

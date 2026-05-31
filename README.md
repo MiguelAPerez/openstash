@@ -61,25 +61,30 @@ openstash list
 
 ## Usage
 
-Every stored spec is referenced as `**key@version**`.
+Every stored spec is referenced as `key@version`. Omit the version to use the latest stored version for that key.
+
+```bash
+openstash search gitea "user repos"          # latest gitea version
+openstash search gitea@1.0.0 "user repos"    # specific version
+```
 
 ### search — find endpoints (slim)
 
 ```bash
-openstash search gitea@1.0.0 "user repos"
+openstash search gitea "user repos"
 openstash search gitea@1.0.0 "repos" --path-prefix /user --method GET
 ```
 
 ### show — one operation (full detail)
 
 ```bash
-openstash show gitea@1.0.0 --path /user/repos --method GET
+openstash show gitea --path /user/repos --method GET
 ```
 
 ### gather — search plus expanded details
 
 ```bash
-openstash gather gitea@1.0.0 "subscription" --expand 3
+openstash gather gitea "subscription" --expand 3
 openstash gather gitea@1.0.0 --path /user/repos --method GET
 ```
 
@@ -88,7 +93,7 @@ openstash gather gitea@1.0.0 --path /user/repos --method GET
 Re-fetches the source and reports whether `info.version` changed (does not overwrite stored specs).
 
 ```bash
-openstash refresh gitea@1.0.0
+openstash refresh gitea
 ```
 
 ## Storage
