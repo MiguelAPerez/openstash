@@ -24,7 +24,7 @@ Pin a specific version:
 go install github.com/MiguelAPerez/openstash/cmd/openstash@v0.1.0
 ```
 
-Pre-built binaries (darwin/linux, amd64/arm64) are attached on the [releases](https://github.com/MiguelAPerez/openstash/releases) page. Download, extract, and put `openstash` on your `PATH`.
+> Pre-built binaries (darwin/linux, amd64/arm64) are attached on the [releases](https://github.com/MiguelAPerez/openstash/releases) page. Download, extract, and put `openstash` on your `PATH`.
 
 ### Build from source
 
@@ -108,21 +108,3 @@ openstash --store /path/to/store list
 ```
 
 YAML and JSON sources are normalized to JSON on disk.
-
-## Development
-
-```bash
-git clone git@github.com:MiguelAPerez/openstash.git
-cd openstash
-go build -o bin/openstash ./cmd/openstash
-go test ./...
-```
-
-```
-cmd/openstash/     CLI entrypoint
-internal/cli/      Commands
-internal/spec/     OpenAPI load, index, operation detail
-internal/search/   Text search
-internal/store/    Filesystem persistence
-```
-
