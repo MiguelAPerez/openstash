@@ -1,0 +1,28 @@
+# Binaries
+/bin/
+/openstash
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test & coverage
+*.test
+*.out
+coverage.*
+*.coverprofile
+
+# Go workspace
+vendor/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local overrides (optional project-local store)
+.openstash/

@@ -4,10 +4,6 @@
 
 **openstash** caches OpenAPI specs locally so you (or an agent) can look up endpoints without re-downloading or parsing huge `swagger.json` files every time.
 
-Specs are stored under a **key** and **version** (for example `gitea@1.0.0`). Ingest once, then search, inspect, or pull details in focused JSON responses.
-
-**Repository:** [github.com/MiguelAPerez/openstash](https://github.com/MiguelAPerez/openstash)
-
 ## Why use it?
 
 - **Less noise** — Slim search results or one operation at a time instead of an entire spec in context.
@@ -67,7 +63,7 @@ openstash list
 
 ## Usage
 
-Every stored spec is referenced as **`key@version`**.
+Every stored spec is referenced as `**key@version**`.
 
 ### search — find endpoints (slim)
 
@@ -129,3 +125,4 @@ internal/spec/     OpenAPI load, index, operation detail
 internal/search/   Text search
 internal/store/    Filesystem persistence
 ```
+
