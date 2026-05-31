@@ -6,7 +6,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var storeRoot string
+var (
+	storeRoot string
+	version   = "dev"
+)
 
 func Execute() {
 	if err := NewRoot().Execute(); err != nil {
@@ -16,9 +19,10 @@ func Execute() {
 
 func NewRoot() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "openstash",
-		Short: "Local OpenAPI cache and search for agents",
-		Long:  "Store OpenAPI specs by key@version. Use search (slim), show (one op), or gather (search + details).",
+		Use:     "openstash",
+		Short:   "Local OpenAPI cache and search for agents",
+		Long:    "Store OpenAPI specs by key@version. Use search (slim), show (one op), or gather (search + details).",
+		Version: version,
 	}
 	root.PersistentFlags().StringVar(&storeRoot, "store", "", "store directory (default: ~/.openstash)")
 
