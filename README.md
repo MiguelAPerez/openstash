@@ -1,7 +1,5 @@
 # openstash
 
-> **Early preview** — experimental CLI, not production-ready. APIs and behavior may change.
-
 **openstash** caches OpenAPI specs locally so you (or an agent) can look up endpoints without re-downloading or parsing huge `swagger.json` files every time.
 
 ## Why use it?

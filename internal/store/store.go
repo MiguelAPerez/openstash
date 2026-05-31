@@ -58,10 +58,12 @@ func (s *Store) Add(key, version, source, endpoint string, doc map[string]any) (
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(doc); err != nil {
-		f.Close()
+		_ = f.Close()
 		return spec.Meta{}, err
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return spec.Meta{}, err
+	}
 
 	index := spec.BuildIndex(doc)
 	idxPath := filepath.Join(dir, "index.json")
@@ -142,7 +144,6 @@ func (s *Store) List() ([]Entry, error) {
 			}
 			doc, err := s.LoadSpec(key, version)
 			if err == nil {
-				meta = meta // keep
 				out = append(out, Entry{
 					Meta:        meta,
 					SpecVersion: spec.InfoVersion(doc),
@@ -178,10 +179,13 @@ func writeJSON(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	if err := enc.Encode(v); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func readJSON(path string, v any) error {
