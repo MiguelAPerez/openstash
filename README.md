@@ -19,7 +19,7 @@ go install github.com/MiguelAPerez/openstash/cmd/openstash@latest
 Pin a specific version:
 
 ```bash
-go install github.com/MiguelAPerez/openstash/cmd/openstash@v0.1.0
+go install github.com/MiguelAPerez/openstash/cmd/openstash@v0.1.1
 ```
 
 > Pre-built binaries (darwin/linux, amd64/arm64) are attached on the [releases](https://github.com/MiguelAPerez/openstash/releases) page. Download, extract, and put `openstash` on your `PATH`.
