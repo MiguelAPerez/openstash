@@ -37,9 +37,11 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          out="dist/openstash_${{ matrix.goos }}_${{ matrix.goarch }}"
-          go build -ldflags="-s -w -X github.com/MiguelAPerez/openstash/internal/cli.version=${version}" -o "${out}" ./cmd/openstash
-          tar -czf "${out}.tar.gz" -C dist "openstash_${{ matrix.goos }}_${{ matrix.goarch }}"
+          name="openstash_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir -p dist
+          go build -ldflags="-s -w -X github.com/MiguelAPerez/openstash/internal/cli.version=${version}" -o dist/openstash ./cmd/openstash
+          tar -czf "dist/${name}.tar.gz" -C dist openstash
+          rm dist/openstash
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
