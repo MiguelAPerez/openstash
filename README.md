@@ -26,48 +26,11 @@ curl -fsSL https://github.com/MiguelAPerez/openstash/releases/latest/download/op
 sudo mv openstash /usr/local/bin/
 ```
 
-Or download manually for your platform:
-
-| Platform | Download |
-|---|---|
-| macOS (Apple Silicon) | `openstash_darwin_arm64.tar.gz` |
-| macOS (Intel) | `openstash_darwin_amd64.tar.gz` |
-| Linux (x86-64) | `openstash_linux_amd64.tar.gz` |
-| Linux (ARM64) | `openstash_linux_arm64.tar.gz` |
-
-Extract and move the `openstash` binary somewhere on your `PATH` (e.g. `/usr/local/bin`).
-
 Verify:
 
 ```bash
 openstash --version
 ```
-
-### Go install
-
-If you already have Go 1.22+ installed:
-
-```bash
-go install github.com/MiguelAPerez/openstash/cmd/openstash@latest
-```
-
-Go installs binaries to `~/go/bin`. If your shell can't find `openstash` after this, add that directory to your PATH:
-
-```bash
-# add to ~/.zshrc or ~/.bashrc
-export PATH="$HOME/go/bin:$PATH"
-```
-
-### Build from source
-
-```bash
-git clone git@github.com:MiguelAPerez/openstash.git
-cd openstash
-go build -o bin/openstash ./cmd/openstash
-./bin/openstash --help
-```
-
-Requires [Go](https://go.dev/dl/) 1.22+.
 
 ## Getting started
 
