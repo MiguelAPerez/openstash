@@ -10,19 +10,53 @@
 
 ## Install
 
-Install the latest [release](https://github.com/MiguelAPerez/openstash/releases/latest) with Go:
+### Homebrew (macOS / Linux)
+
+```bash
+brew tap MiguelAPerez/tap
+brew install openstash
+```
+
+### Pre-built binary
+
+macOS and Linux binaries are published on the [releases page](https://github.com/MiguelAPerez/openstash/releases/latest). The one-liner below detects your OS and architecture automatically:
+
+```bash
+curl -fsSL https://github.com/MiguelAPerez/openstash/releases/latest/download/openstash_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz
+sudo mv openstash /usr/local/bin/
+```
+
+Or download manually for your platform:
+
+| Platform | Download |
+|---|---|
+| macOS (Apple Silicon) | `openstash_darwin_arm64.tar.gz` |
+| macOS (Intel) | `openstash_darwin_amd64.tar.gz` |
+| Linux (x86-64) | `openstash_linux_amd64.tar.gz` |
+| Linux (ARM64) | `openstash_linux_arm64.tar.gz` |
+
+Extract and move the `openstash` binary somewhere on your `PATH` (e.g. `/usr/local/bin`).
+
+Verify:
+
+```bash
+openstash --version
+```
+
+### Go install
+
+If you already have Go 1.22+ installed:
 
 ```bash
 go install github.com/MiguelAPerez/openstash/cmd/openstash@latest
 ```
 
-Pin a specific version:
+Go installs binaries to `~/go/bin`. If your shell can't find `openstash` after this, add that directory to your PATH:
 
 ```bash
-go install github.com/MiguelAPerez/openstash/cmd/openstash@v0.1.1
+# add to ~/.zshrc or ~/.bashrc
+export PATH="$HOME/go/bin:$PATH"
 ```
-
-> Pre-built binaries (darwin/linux, amd64/arm64) are attached on the [releases](https://github.com/MiguelAPerez/openstash/releases) page. Download, extract, and put `openstash` on your `PATH`.
 
 ### Build from source
 
