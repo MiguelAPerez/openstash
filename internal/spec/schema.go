@@ -39,8 +39,8 @@ type FieldLookup struct {
 	Checked   []string `json:"checked,omitempty"`
 }
 
-// schemasContainer returns the map of component schemas and the dialect used.
-// Handles both OpenAPI 3 (components.schemas) and Swagger 2.0 (definitions).
+// schemasContainer returns the map of component schemas and whether one was
+// found. Handles both OpenAPI 3 (components.schemas) and Swagger 2.0 (definitions).
 func schemasContainer(doc map[string]any) (map[string]any, bool) {
 	if components, ok := doc["components"].(map[string]any); ok {
 		if schemas, ok := components["schemas"].(map[string]any); ok {
@@ -81,14 +81,17 @@ func GetSchema(doc map[string]any, name string) (map[string]any, error) {
 	return node, nil
 }
 
-// RefName returns the last path segment of a $ref string.
-// E.g. "#/definitions/Foo" -> "Foo", "#/components/schemas/Bar" -> "Bar".
+// RefName returns the last path segment of a $ref string, with JSON-pointer
+// escapes decoded so the true component name is returned.
+// E.g. "#/definitions/Foo" -> "Foo", "#/components/schemas/Foo~1Bar" -> "Foo/Bar".
 func RefName(ref string) string {
-	idx := strings.LastIndex(ref, "/")
-	if idx < 0 {
-		return ref
+	name := ref
+	if idx := strings.LastIndex(ref, "/"); idx >= 0 {
+		name = ref[idx+1:]
 	}
-	return ref[idx+1:]
+	name = strings.ReplaceAll(name, "~1", "/")
+	name = strings.ReplaceAll(name, "~0", "~")
+	return name
 }
 
 // ResolveRef resolves an internal JSON-pointer ref ("#/...") within doc.
@@ -97,11 +100,11 @@ func ResolveRef(doc map[string]any, ref string) (map[string]any, error) {
 	if !strings.HasPrefix(ref, "#/") && ref != "#" {
 		return nil, fmt.Errorf("external refs are not supported: %s", ref)
 	}
-	pointer := strings.TrimPrefix(ref, "#/")
-	if pointer == "" {
-		// ref is "#" — whole document
+	if ref == "#" {
+		// Whole-document ref.
 		return doc, nil
 	}
+	pointer := strings.TrimPrefix(ref, "#/")
 	segments := strings.Split(pointer, "/")
 	var current any = doc
 	for _, seg := range segments {
@@ -125,30 +128,6 @@ func ResolveRef(doc map[string]any, ref string) (map[string]any, error) {
 	return result, nil
 }
 
-// deepCopy creates a shallow-recursive copy of a map[string]any.
-func deepCopy(m map[string]any) map[string]any {
-	out := make(map[string]any, len(m))
-	for k, v := range m {
-		switch val := v.(type) {
-		case map[string]any:
-			out[k] = deepCopy(val)
-		case []any:
-			cp := make([]any, len(val))
-			for i, item := range val {
-				if im, ok := item.(map[string]any); ok {
-					cp[i] = deepCopy(im)
-				} else {
-					cp[i] = item
-				}
-			}
-			out[k] = cp
-		default:
-			out[k] = v
-		}
-	}
-	return out
-}
-
 // ResolveSchema returns a COPY of node with $ref targets inlined up to depth hops.
 // depth counts only $ref dereferences. Descending into properties/items/etc does not consume depth.
 // At depth 0 a $ref renders as {"$ref":"<Name>"}.
@@ -163,7 +142,7 @@ func resolveNode(doc, node map[string]any, depth int, seen map[string]bool) map[
 	// If node has a $ref, handle it first.
 	if ref, ok := node["$ref"].(string); ok {
 		name := RefName(ref)
-		if depth == 0 {
+		if depth <= 0 {
 			return map[string]any{"$ref": name}
 		}
 		if seen[ref] {
@@ -287,10 +266,11 @@ func SchemaFields(node map[string]any) []Field {
 
 // LookupFieldPath walks a dotted path like "Schema.field.subfield" within doc.
 func LookupFieldPath(doc map[string]any, path string) (*FieldLookup, error) {
-	segments := strings.Split(path, ".")
-	if len(segments) == 0 {
-		return nil, fmt.Errorf("empty path")
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("empty schema path")
 	}
+	segments := strings.Split(path, ".")
 
 	schemas, hasContainer := schemasContainer(doc)
 	if !hasContainer {
@@ -334,12 +314,18 @@ func LookupFieldPath(doc map[string]any, path string) (*FieldLookup, error) {
 	resolved := rootName
 
 	for _, seg := range segments[1:] {
-		// Deref any $ref at current level first.
+		// Deref any $ref at current level first, guarding against ref cycles
+		// (e.g. Foo -> Bar -> Foo) so the loop always terminates.
+		seenRefs := make(map[string]bool)
 		for {
 			ref, hasRef := current["$ref"].(string)
 			if !hasRef {
 				break
 			}
+			if seenRefs[ref] {
+				break
+			}
+			seenRefs[ref] = true
 			target, err := ResolveRef(doc, ref)
 			if err != nil {
 				break

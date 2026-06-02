@@ -3,6 +3,7 @@ package spec
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // ---- fixtures ---------------------------------------------------------------
@@ -489,5 +490,66 @@ func TestBuildSchemaIndex_NoContainer(t *testing.T) {
 	idx := BuildSchemaIndex(map[string]any{})
 	if idx != nil {
 		t.Fatalf("expected nil, got %v", idx)
+	}
+}
+
+// ---- regression tests for review fixes --------------------------------------
+
+func TestRefName_Unescape(t *testing.T) {
+	if got := RefName("#/components/schemas/Foo~1Bar"); got != "Foo/Bar" {
+		t.Fatalf("expected decoded name Foo/Bar, got %q", got)
+	}
+	if got := RefName("#/definitions/Tilde~0Name"); got != "Tilde~Name" {
+		t.Fatalf("expected decoded name Tilde~Name, got %q", got)
+	}
+}
+
+func TestResolveRef_WholeDocument(t *testing.T) {
+	doc := openapi3Doc()
+	got, err := ResolveRef(doc, "#")
+	if err != nil {
+		t.Fatalf("ResolveRef(#): %v", err)
+	}
+	if got["openapi"] != "3.0.0" {
+		t.Fatalf("expected whole document, got %v", got)
+	}
+}
+
+func TestResolveSchema_NegativeDepthClamped(t *testing.T) {
+	doc := openapi3Doc()
+	node := map[string]any{"$ref": "#/components/schemas/Status"}
+	result := ResolveSchema(doc, node, -5)
+	if result["$ref"] != "Status" {
+		t.Fatalf("negative depth should behave like depth 0, got %v", result)
+	}
+}
+
+func TestLookupFieldPath_EmptyPath(t *testing.T) {
+	for _, p := range []string{"", "   "} {
+		if _, err := LookupFieldPath(openapi3Doc(), p); err == nil {
+			t.Fatalf("expected error for empty path %q", p)
+		}
+	}
+}
+
+func TestLookupFieldPath_CycleTerminates(t *testing.T) {
+	// Foo -> Bar -> Foo: a hostile cyclic spec must not hang `has`.
+	doc := map[string]any{
+		"components": map[string]any{
+			"schemas": map[string]any{
+				"Foo": map[string]any{"$ref": "#/components/schemas/Bar"},
+				"Bar": map[string]any{"$ref": "#/components/schemas/Foo"},
+			},
+		},
+	}
+	done := make(chan struct{})
+	go func() {
+		_, _ = LookupFieldPath(doc, "Foo.whatever")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("LookupFieldPath did not terminate on a cyclic ref")
 	}
 }

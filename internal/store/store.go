@@ -38,42 +38,49 @@ func (s *Store) specDir(key, version string) string {
 	return filepath.Join(s.Root, "specs", sanitize(key), sanitize(version))
 }
 
-func (s *Store) Add(key, version, source, endpoint string, doc map[string]any) (spec.Meta, error) {
+// AddResult reports what was indexed during Add, so callers can summarize the
+// ingest without re-walking the document.
+type AddResult struct {
+	Operations int
+	Schemas    int
+}
+
+func (s *Store) Add(key, version, source, endpoint string, doc map[string]any) (spec.Meta, AddResult, error) {
 	key = strings.TrimSpace(key)
 	version = strings.TrimSpace(version)
 	if key == "" || version == "" {
-		return spec.Meta{}, fmt.Errorf("key and version are required")
+		return spec.Meta{}, AddResult{}, fmt.Errorf("key and version are required")
 	}
 
 	dir := s.specDir(key, version)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return spec.Meta{}, err
+		return spec.Meta{}, AddResult{}, err
 	}
 
 	specPath := filepath.Join(dir, "spec.json")
 	f, err := os.Create(specPath)
 	if err != nil {
-		return spec.Meta{}, err
+		return spec.Meta{}, AddResult{}, err
 	}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(doc); err != nil {
 		_ = f.Close()
-		return spec.Meta{}, err
+		return spec.Meta{}, AddResult{}, err
 	}
 	if err := f.Close(); err != nil {
-		return spec.Meta{}, err
+		return spec.Meta{}, AddResult{}, err
 	}
 
 	index := spec.BuildIndex(doc)
 	idxPath := filepath.Join(dir, "index.json")
 	if err := writeJSON(idxPath, index); err != nil {
-		return spec.Meta{}, err
+		return spec.Meta{}, AddResult{}, err
 	}
 
 	schemaIndex := spec.BuildSchemaIndex(doc)
 	if err := writeJSON(filepath.Join(dir, "schemas.json"), schemaIndex); err != nil {
-		return spec.Meta{}, err
+		return spec.Meta{}, AddResult{}, err
 	}
 
 	meta := spec.Meta{
@@ -84,9 +91,9 @@ func (s *Store) Add(key, version, source, endpoint string, doc map[string]any) (
 		FetchedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := writeJSON(filepath.Join(dir, "meta.json"), meta); err != nil {
-		return spec.Meta{}, err
+		return spec.Meta{}, AddResult{}, err
 	}
-	return meta, nil
+	return meta, AddResult{Operations: len(index), Schemas: len(schemaIndex)}, nil
 }
 
 func (s *Store) LoadMeta(key, version string) (spec.Meta, error) {
