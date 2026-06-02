@@ -71,6 +71,11 @@ func (s *Store) Add(key, version, source, endpoint string, doc map[string]any) (
 		return spec.Meta{}, err
 	}
 
+	schemaIndex := spec.BuildSchemaIndex(doc)
+	if err := writeJSON(filepath.Join(dir, "schemas.json"), schemaIndex); err != nil {
+		return spec.Meta{}, err
+	}
+
 	meta := spec.Meta{
 		Key:       key,
 		Version:   version,
@@ -100,6 +105,17 @@ func (s *Store) LoadIndex(key, version string) ([]spec.OperationIndex, error) {
 	var index []spec.OperationIndex
 	err := readJSON(filepath.Join(s.specDir(key, version), "index.json"), &index)
 	return index, err
+}
+
+// LoadSchemaIndex reads schemas.json; returns (nil, nil) if the file does not exist
+// (backward-compat with specs added before schema indexing was introduced).
+func (s *Store) LoadSchemaIndex(key, version string) ([]spec.SchemaIndex, error) {
+	var idx []spec.SchemaIndex
+	err := readJSON(filepath.Join(s.specDir(key, version), "schemas.json"), &idx)
+	if err != nil && os.IsNotExist(err) {
+		return nil, nil
+	}
+	return idx, err
 }
 
 func (s *Store) Exists(key, version string) bool {

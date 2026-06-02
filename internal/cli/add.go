@@ -50,6 +50,7 @@ func newAdd() *cobra.Command {
 				"status":  "added",
 				"meta":    meta,
 				"indexed": len(spec.BuildIndex(doc)),
+				"schemas": len(spec.BuildSchemaIndex(doc)),
 			})
 		},
 	}
