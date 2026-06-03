@@ -34,6 +34,7 @@ func NewRoot() *cobra.Command {
 	root.AddCommand(newRefresh())
 	root.AddCommand(newSchema())
 	root.AddCommand(newHas())
+	root.AddCommand(newExplain())
 
 	return root
 }
