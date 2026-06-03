@@ -44,7 +44,7 @@ func topTags(index []spec.OperationIndex, cap int) []string {
 	return result
 }
 
-// buildRecipes returns 5-10 deterministic ready-to-paste command strings using
+// buildRecipes returns up to 7 deterministic ready-to-paste command strings using
 // real names from the spec. It gracefully omits recipes when data is absent.
 func buildRecipes(key string, index []spec.OperationIndex, schemaNames []string, schemaFields map[string][]string) []string {
 	var recipes []string
@@ -100,17 +100,11 @@ func buildRecipes(key string, index []spec.OperationIndex, schemaNames []string,
 		recipes = append(recipes, fmt.Sprintf("openstash schema %s %s --fields", key, schemaNames[0]))
 	}
 
-	// --- has SchemaName.field ---
-	if len(schemaNames) > 0 {
-		sn := schemaNames[0]
+	// --- has SchemaName.field — scan all schemas until one with fields is found ---
+	for _, sn := range schemaNames {
 		if fields, ok := schemaFields[sn]; ok && len(fields) > 0 {
 			recipes = append(recipes, fmt.Sprintf("openstash has %s %s.%s", key, sn, fields[0]))
-		} else if len(schemaNames) > 1 {
-			// Try the second schema.
-			sn2 := schemaNames[1]
-			if fields2, ok := schemaFields[sn2]; ok && len(fields2) > 0 {
-				recipes = append(recipes, fmt.Sprintf("openstash has %s %s.%s", key, sn2, fields2[0]))
-			}
+			break
 		}
 	}
 
@@ -170,7 +164,10 @@ func newExplain() *cobra.Command {
 			}
 
 			// Load or build schema index.
-			schemaIdx, _ := st.LoadSchemaIndex(key, version)
+			schemaIdx, err := st.LoadSchemaIndex(key, version)
+			if err != nil {
+				return err
+			}
 			if schemaIdx == nil && doc != nil {
 				schemaIdx = spec.BuildSchemaIndex(doc)
 			}

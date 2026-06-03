@@ -27,11 +27,17 @@ func newList() *cobra.Command {
 				key := e.Key
 				version := e.Version
 
-				// Load operation index for hints.
-				index, _ := st.LoadIndex(key, version)
+				// Load operation index for hints (best-effort; degrade gracefully on error).
+				index, loadErr := st.LoadIndex(key, version)
+				if loadErr != nil {
+					index = nil
+				}
 
 				// Load or build schema index; extract sorted schema names.
-				schemaIdx, _ := st.LoadSchemaIndex(key, version)
+				schemaIdx, loadErr := st.LoadSchemaIndex(key, version)
+				if loadErr != nil {
+					schemaIdx = nil
+				}
 				if schemaIdx == nil {
 					doc, err := st.LoadSpec(key, version)
 					if err == nil {
