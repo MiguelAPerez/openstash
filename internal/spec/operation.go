@@ -135,6 +135,143 @@ func shallowSchema(schema map[string]any) map[string]any {
 	return out
 }
 
+// GetOperationDepth returns detail for a single path + method, with schema
+// refs inlined to the given depth. When depth <= 0 it delegates to GetOperation
+// (preserving the existing shallow behavior). When depth > 0 it resolves
+// $ref nodes in request body and response content schemas via ResolveSchema.
+func GetOperationDepth(doc map[string]any, path, method string, depth int) (*OperationDetail, error) {
+	if depth <= 0 {
+		return GetOperation(doc, path, method)
+	}
+	method = stringsToLower(method)
+	paths, _ := doc["paths"].(map[string]any)
+	if paths == nil {
+		return nil, fmt.Errorf("spec has no paths")
+	}
+	pathItem, ok := paths[path].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("path not found: %s", path)
+	}
+	opRaw, ok := pathItem[method]
+	if !ok {
+		return nil, fmt.Errorf("method %s not found on %s", stringsToUpper(method), path)
+	}
+	op, ok := opRaw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("invalid operation at %s %s", method, path)
+	}
+
+	d := &OperationDetail{
+		Method:      stringsToUpper(method),
+		Path:        path,
+		OperationID: strField(op, "operationId"),
+		Summary:     strField(op, "summary"),
+		Description: strField(op, "description"),
+		Tags:        stringSliceField(op, "tags"),
+	}
+	if params, ok := op["parameters"].([]any); ok {
+		d.Parameters = expandedParameters(doc, params, depth)
+	}
+	if rb, ok := op["requestBody"].(map[string]any); ok {
+		d.RequestBody = expandedRequestBody(doc, rb, depth)
+	}
+	if resp, ok := op["responses"].(map[string]any); ok {
+		d.Responses = expandedResponses(doc, resp, depth)
+	}
+	return d, nil
+}
+
+// expandedParameters inlines $ref schemas attached to parameters. This covers
+// Swagger 2.0 body parameters (in: body, schema: {$ref}) as well as OpenAPI 3.0
+// parameter schemas. Parameters without a schema are passed through unchanged.
+func expandedParameters(doc map[string]any, params []any, depth int) []any {
+	out := make([]any, len(params))
+	for i, p := range params {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			out[i] = p
+			continue
+		}
+		schema, ok := pm["schema"].(map[string]any)
+		if !ok {
+			out[i] = pm
+			continue
+		}
+		np := make(map[string]any, len(pm))
+		for k, v := range pm {
+			np[k] = v
+		}
+		np["schema"] = ResolveSchema(doc, schema, depth)
+		out[i] = np
+	}
+	return out
+}
+
+func expandedRequestBody(doc map[string]any, rb map[string]any, depth int) map[string]any {
+	out := map[string]any{}
+	if req, ok := rb["required"].(bool); ok {
+		out["required"] = req
+	}
+	if desc, ok := rb["description"].(string); ok {
+		out["description"] = desc
+	}
+	if content, ok := rb["content"].(map[string]any); ok {
+		expanded := make(map[string]any, len(content))
+		for ct, body := range content {
+			if bm, ok := body.(map[string]any); ok {
+				if schema, ok := bm["schema"].(map[string]any); ok {
+					expanded[ct] = map[string]any{"schema": ResolveSchema(doc, schema, depth)}
+				} else {
+					expanded[ct] = body
+				}
+			}
+		}
+		out["content"] = expanded
+	}
+	return out
+}
+
+func expandedResponses(doc map[string]any, resp map[string]any, depth int) map[string]any {
+	out := make(map[string]any, len(resp))
+	for code, raw := range resp {
+		rm, ok := raw.(map[string]any)
+		if !ok {
+			out[code] = raw
+			continue
+		}
+		// Swagger 2.0 named response: the response is itself a $ref into
+		// #/responses/... — resolve the whole response node.
+		if _, ok := rm["$ref"].(string); ok {
+			out[code] = ResolveSchema(doc, rm, depth)
+			continue
+		}
+		entry := map[string]any{}
+		if desc, ok := rm["description"].(string); ok {
+			entry["description"] = desc
+		}
+		// Swagger 2.0: response schema lives directly on the response.
+		if schema, ok := rm["schema"].(map[string]any); ok {
+			entry["schema"] = ResolveSchema(doc, schema, depth)
+		}
+		// OpenAPI 3.0: response schema lives under content[mediaType].schema.
+		if content, ok := rm["content"].(map[string]any); ok {
+			expanded := make(map[string]any, len(content))
+			for ct, body := range content {
+				if bm, ok := body.(map[string]any); ok {
+					if schema, ok := bm["schema"].(map[string]any); ok {
+						expanded[ct] = map[string]any{"schema": ResolveSchema(doc, schema, depth)}
+					}
+				}
+			}
+			if len(expanded) > 0 {
+				entry["content"] = expanded
+			}
+		}
+		out[code] = entry
+	}
+	return out
+}
+
 func stringsToLower(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }

@@ -10,6 +10,8 @@ import (
 
 func newShow() *cobra.Command {
 	var path, method string
+	var expand bool
+	var depth int
 
 	cmd := &cobra.Command{
 		Use:   "show <key[@version]>",
@@ -25,7 +27,13 @@ func newShow() *cobra.Command {
 				return err
 			}
 
-			op, err := spec.GetOperation(doc, path, method)
+			// Compute effective depth: --depth wins over --expand.
+			effectiveDepth := depth
+			if effectiveDepth == 0 && expand {
+				effectiveDepth = 1
+			}
+
+			op, err := spec.GetOperationDepth(doc, path, method, effectiveDepth)
 			if err != nil {
 				return err
 			}
@@ -34,6 +42,7 @@ func newShow() *cobra.Command {
 				"ref":       formatRef(key, version),
 				"key":       key,
 				"version":   version,
+				"depth":     effectiveDepth,
 				"operation": op,
 			})
 		},
@@ -41,5 +50,7 @@ func newShow() *cobra.Command {
 
 	cmd.Flags().StringVar(&path, "path", "", "OpenAPI path (e.g. /user/repos)")
 	cmd.Flags().StringVar(&method, "method", "", "HTTP method (e.g. GET)")
+	cmd.Flags().BoolVar(&expand, "expand", false, "Inline $ref schemas one level deep (shorthand for --depth 1)")
+	cmd.Flags().IntVar(&depth, "depth", 0, "Depth of $ref inlining for schemas (0 = shallow, default)")
 	return cmd
 }

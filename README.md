@@ -76,12 +76,15 @@ openstash search gitea@1.0.0 "repos" --path-prefix /user --method GET
 
 ```bash
 openstash show gitea --path /user/repos --method GET
+openstash show gitea --path /user/repos --method GET --depth 2
+openstash show gitea --path /user/repos --method GET --expand
 ```
 
 ### gather — search plus expanded details
 
 ```bash
-openstash gather gitea "subscription" --expand 3
+openstash gather gitea "subscription" --depth 2
+openstash gather gitea "subscription" --expand
 openstash gather gitea@1.0.0 --path /user/repos --method GET
 ```
 
