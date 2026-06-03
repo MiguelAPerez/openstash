@@ -12,7 +12,8 @@ import (
 func newGather() *cobra.Command {
 	var limit int
 	var pathPrefix, method, path string
-	var expand int
+	var expand bool
+	var depth int
 
 	cmd := &cobra.Command{
 		Use:   "gather <key[@version]> [query]",
@@ -29,9 +30,14 @@ func newGather() *cobra.Command {
 				return err
 			}
 
+			effectiveDepth := depth
+			if effectiveDepth == 0 && expand {
+				effectiveDepth = 1
+			}
+
 			// Exact mode: path + method without query
 			if path != "" && method != "" {
-				op, err := spec.GetOperation(doc, path, method)
+				op, err := spec.GetOperationDepth(doc, path, method, effectiveDepth)
 				if err != nil {
 					return err
 				}
@@ -39,6 +45,7 @@ func newGather() *cobra.Command {
 					"ref":        formatRef(key, version),
 					"key":        key,
 					"version":    version,
+					"depth":      effectiveDepth,
 					"mode":       "exact",
 					"operations": []any{op},
 				})
@@ -52,20 +59,14 @@ func newGather() *cobra.Command {
 			if len(hits) == 0 {
 				return out.JSON(map[string]any{
 					"ref": formatRef(key, version), "key": key, "version": version,
-					"mode": "search", "query": query, "hits": hits, "operations": []any{},
+					"depth": effectiveDepth, "mode": "search", "query": query,
+					"hits": hits, "operations": []any{},
 				})
-			}
-			if expand <= 0 {
-				expand = len(hits)
-			}
-			if expand > len(hits) {
-				expand = len(hits)
 			}
 
 			var operations []*spec.OperationDetail
-			for i := 0; i < expand; i++ {
-				h := hits[i]
-				op, err := spec.GetOperation(doc, h.Operation.Path, h.Operation.Method)
+			for _, h := range hits {
+				op, err := spec.GetOperationDepth(doc, h.Operation.Path, h.Operation.Method, effectiveDepth)
 				if err != nil {
 					continue
 				}
@@ -76,6 +77,7 @@ func newGather() *cobra.Command {
 				"ref":        formatRef(key, version),
 				"key":        key,
 				"version":    version,
+				"depth":      effectiveDepth,
 				"mode":       "search",
 				"query":      query,
 				"hits":       hits,
@@ -85,7 +87,8 @@ func newGather() *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 5, "max search hits")
-	cmd.Flags().IntVar(&expand, "expand", 3, "how many hits to expand with full detail")
+	cmd.Flags().BoolVar(&expand, "expand", false, "Inline $ref schemas one level deep (shorthand for --depth 1)")
+	cmd.Flags().IntVar(&depth, "depth", 0, "Depth of $ref inlining for schemas (0 = shallow, default)")
 	cmd.Flags().StringVar(&pathPrefix, "path-prefix", "", "filter paths by prefix")
 	cmd.Flags().StringVar(&method, "method", "", "filter by HTTP method")
 	cmd.Flags().StringVar(&path, "path", "", "exact path (use with --method)")
