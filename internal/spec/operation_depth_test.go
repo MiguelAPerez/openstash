@@ -289,3 +289,113 @@ func TestGetOperationDepthNegativeMatchesGetOperation(t *testing.T) {
 		t.Fatalf("depth=-1 should equal GetOperation output")
 	}
 }
+
+// swagger2Doc builds a minimal Swagger 2.0 document where the request body is a
+// `parameters` entry with `in: body` (not an OpenAPI 3.0 requestBody) and the
+// responses are $refs into #/responses. This mirrors specs like gitea.
+func swagger2OpDoc() map[string]any {
+	return map[string]any{
+		"swagger": "2.0",
+		"info":    map[string]any{"title": "Test", "version": "1.0.0"},
+		"definitions": map[string]any{
+			"DeleteOption": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"emails": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+		"responses": map[string]any{
+			"empty": map[string]any{"description": "an empty response"},
+		},
+		"paths": map[string]any{
+			"/user/emails": map[string]any{
+				"delete": map[string]any{
+					"operationId": "deleteEmail",
+					"summary":     "Delete email addresses",
+					"parameters": []any{
+						map[string]any{
+							"in":     "body",
+							"name":   "body",
+							"schema": map[string]any{"$ref": "#/definitions/DeleteOption"},
+						},
+					},
+					"responses": map[string]any{
+						"204": map[string]any{"$ref": "#/responses/empty"},
+					},
+				},
+			},
+		},
+	}
+}
+
+// TestGetOperationDepthSwagger2BodyParam verifies that --expand (depth>=1)
+// inlines the $ref schema carried by a Swagger 2.0 body parameter.
+func TestGetOperationDepthSwagger2BodyParam(t *testing.T) {
+	doc := swagger2OpDoc()
+
+	op, err := GetOperationDepth(doc, "/user/emails", "DELETE", 1)
+	if err != nil {
+		t.Fatalf("GetOperationDepth: %v", err)
+	}
+	if len(op.Parameters) != 1 {
+		t.Fatalf("expected 1 parameter, got %d", len(op.Parameters))
+	}
+	param := op.Parameters[0].(map[string]any)
+	schema, ok := param["schema"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected param schema map, got %T", param["schema"])
+	}
+	if schema["$ref"] != nil {
+		t.Fatalf("expected body param $ref to be inlined, still got $ref: %v", schema["$ref"])
+	}
+	if schema["$from"] != "DeleteOption" {
+		t.Fatalf("expected $from=DeleteOption provenance, got: %v", schema["$from"])
+	}
+	if _, ok := schema["properties"].(map[string]any); !ok {
+		t.Fatalf("expected expanded properties map, got: %v", schema["properties"])
+	}
+}
+
+// TestGetOperationDepthSwagger2ResponseRef verifies that a Swagger 2.0
+// response expressed as a $ref into #/responses is resolved when expanded.
+func TestGetOperationDepthSwagger2ResponseRef(t *testing.T) {
+	doc := swagger2OpDoc()
+
+	op, err := GetOperationDepth(doc, "/user/emails", "DELETE", 1)
+	if err != nil {
+		t.Fatalf("GetOperationDepth: %v", err)
+	}
+	resp, ok := op.Responses["204"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 204 response map, got %T", op.Responses["204"])
+	}
+	if resp["$ref"] != nil {
+		t.Fatalf("expected response $ref to be inlined, still got $ref: %v", resp["$ref"])
+	}
+	if resp["description"] != "an empty response" {
+		t.Fatalf("expected resolved response description, got: %v", resp["description"])
+	}
+	if resp["$from"] != "empty" {
+		t.Fatalf("expected $from=empty provenance, got: %v", resp["$from"])
+	}
+}
+
+// TestGetOperationDepthSwagger2ShallowUnchanged verifies depth=0 leaves the
+// Swagger 2.0 body param $ref untouched (shallow behavior preserved).
+func TestGetOperationDepthSwagger2ShallowUnchanged(t *testing.T) {
+	doc := swagger2OpDoc()
+
+	op, err := GetOperationDepth(doc, "/user/emails", "DELETE", 0)
+	if err != nil {
+		t.Fatalf("GetOperationDepth: %v", err)
+	}
+	param := op.Parameters[0].(map[string]any)
+	schema := param["schema"].(map[string]any)
+	if schema["$ref"] != "#/definitions/DeleteOption" {
+		t.Fatalf("expected untouched $ref at depth=0, got: %v", schema["$ref"])
+	}
+}

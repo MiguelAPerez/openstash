@@ -170,7 +170,7 @@ func GetOperationDepth(doc map[string]any, path, method string, depth int) (*Ope
 		Tags:        stringSliceField(op, "tags"),
 	}
 	if params, ok := op["parameters"].([]any); ok {
-		d.Parameters = params
+		d.Parameters = expandedParameters(doc, params, depth)
 	}
 	if rb, ok := op["requestBody"].(map[string]any); ok {
 		d.RequestBody = expandedRequestBody(doc, rb, depth)
@@ -179,6 +179,32 @@ func GetOperationDepth(doc map[string]any, path, method string, depth int) (*Ope
 		d.Responses = expandedResponses(doc, resp, depth)
 	}
 	return d, nil
+}
+
+// expandedParameters inlines $ref schemas attached to parameters. This covers
+// Swagger 2.0 body parameters (in: body, schema: {$ref}) as well as OpenAPI 3.0
+// parameter schemas. Parameters without a schema are passed through unchanged.
+func expandedParameters(doc map[string]any, params []any, depth int) []any {
+	out := make([]any, len(params))
+	for i, p := range params {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			out[i] = p
+			continue
+		}
+		schema, ok := pm["schema"].(map[string]any)
+		if !ok {
+			out[i] = pm
+			continue
+		}
+		np := make(map[string]any, len(pm))
+		for k, v := range pm {
+			np[k] = v
+		}
+		np["schema"] = ResolveSchema(doc, schema, depth)
+		out[i] = np
+	}
+	return out
 }
 
 func expandedRequestBody(doc map[string]any, rb map[string]any, depth int) map[string]any {
@@ -213,10 +239,21 @@ func expandedResponses(doc map[string]any, resp map[string]any, depth int) map[s
 			out[code] = raw
 			continue
 		}
+		// Swagger 2.0 named response: the response is itself a $ref into
+		// #/responses/... — resolve the whole response node.
+		if _, ok := rm["$ref"].(string); ok {
+			out[code] = ResolveSchema(doc, rm, depth)
+			continue
+		}
 		entry := map[string]any{}
 		if desc, ok := rm["description"].(string); ok {
 			entry["description"] = desc
 		}
+		// Swagger 2.0: response schema lives directly on the response.
+		if schema, ok := rm["schema"].(map[string]any); ok {
+			entry["schema"] = ResolveSchema(doc, schema, depth)
+		}
+		// OpenAPI 3.0: response schema lives under content[mediaType].schema.
 		if content, ok := rm["content"].(map[string]any); ok {
 			expanded := make(map[string]any, len(content))
 			for ct, body := range content {
