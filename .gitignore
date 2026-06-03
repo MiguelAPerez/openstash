@@ -27,5 +27,8 @@ Thumbs.db
 # Local overrides (optional project-local store)
 .openstash/
 
+# Claude Code agent worktrees
+.claude/
+
 
 dist/

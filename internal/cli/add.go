@@ -41,7 +41,7 @@ func newAdd() *cobra.Command {
 				return fmt.Errorf("already exists: %s@%s", key, version)
 			}
 
-			meta, err := st.Add(key, version, from, endpoint, doc)
+			meta, res, err := st.Add(key, version, from, endpoint, doc)
 			if err != nil {
 				return err
 			}
@@ -49,7 +49,8 @@ func newAdd() *cobra.Command {
 			return out.JSON(map[string]any{
 				"status":  "added",
 				"meta":    meta,
-				"indexed": len(spec.BuildIndex(doc)),
+				"indexed": res.Operations,
+				"schemas": res.Schemas,
 			})
 		},
 	}

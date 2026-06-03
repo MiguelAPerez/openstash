@@ -65,7 +65,7 @@ func TestLatestVersion(t *testing.T) {
 	st := testStore(t)
 
 	for _, version := range []string{"1.0.0", "1.10.0", "2.0.0", "1.2.0"} {
-		if _, err := st.Add("api", version, "file.json", "", testDoc(version)); err != nil {
+		if _, _, err := st.Add("api", version, "file.json", "", testDoc(version)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -89,10 +89,10 @@ func TestLatestVersionMissingKey(t *testing.T) {
 
 func TestResolveRefUsesLatest(t *testing.T) {
 	st := testStore(t)
-	if _, err := st.Add("api", "1.0.0", "a.json", "", testDoc("1.0.0")); err != nil {
+	if _, _, err := st.Add("api", "1.0.0", "a.json", "", testDoc("1.0.0")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Add("api", "2.0.0", "b.json", "", testDoc("2.0.0")); err != nil {
+	if _, _, err := st.Add("api", "2.0.0", "b.json", "", testDoc("2.0.0")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,10 +107,10 @@ func TestResolveRefUsesLatest(t *testing.T) {
 
 func TestResolveRefKeepsExplicitVersion(t *testing.T) {
 	st := testStore(t)
-	if _, err := st.Add("api", "1.0.0", "a.json", "", testDoc("1.0.0")); err != nil {
+	if _, _, err := st.Add("api", "1.0.0", "a.json", "", testDoc("1.0.0")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Add("api", "2.0.0", "b.json", "", testDoc("2.0.0")); err != nil {
+	if _, _, err := st.Add("api", "2.0.0", "b.json", "", testDoc("2.0.0")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,7 +125,7 @@ func TestResolveRefKeepsExplicitVersion(t *testing.T) {
 
 func TestAddListExists(t *testing.T) {
 	st := testStore(t)
-	meta, err := st.Add("gitea", "1.0.0", "/tmp/spec.json", "https://example/api", testDoc("1.0.0"))
+	meta, _, err := st.Add("gitea", "1.0.0", "/tmp/spec.json", "https://example/api", testDoc("1.0.0"))
 	if err != nil {
 		t.Fatal(err)
 	}
