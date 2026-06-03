@@ -1,3 +1,14 @@
+## v0.2.0 (2026-06-03)
+
+### Feat
+
+- scoped search with --in (paths, schemas) (#4)
+- explain command + per-spec cheat sheet in list (#6)
+- show --expand/--depth to inline $ref schemas (#5)
+- schema resolution engine (schema + has commands) (#3)
+
+## v0.1.2 (2026-05-31)
+
 ## v0.1.1 (2026-05-31)
 
 First public release.
