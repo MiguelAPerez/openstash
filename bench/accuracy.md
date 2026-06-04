@@ -1,6 +1,6 @@
 # openstash accuracy eval
 
-Model: `qwen2.5-coder:14b` · N=2 runs/task · full-dump budget=3500 tok · temp 0
+Model: `qwen2.5-coder:14b` · N=3 runs/task · full-dump budget=3500 tok · temp 0
 
 Task: pick the correct `{method, path}` from a natural-language description.
 

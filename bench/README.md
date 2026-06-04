@@ -6,12 +6,14 @@ These benchmarks measure it two ways — context cost (mechanical) and task accu
 
 ## Headline
 
-| Spec | Spec size | Tokens to call one op | Reduction | Endpoint accuracy |
-|---|--:|--|--:|--|
-| petstore | 20 KB | 4,953 → **1,585** | 3× | 100% → **100%** |
-| cursor | 72 KB | 12,548 → **1,833** | 7× | 0% → **100%** |
-| gitea | 820 KB | 148,146 → **866** | 171× | 0% → **100%** |
-| stripe | 7.5 MB | 1,054,928 → **5,106** | **207×** | 0% → **100%** |
+
+| Spec     | Spec size | Tokens to call one op | Reduction | Endpoint accuracy |
+| -------- | --------- | --------------------- | --------- | ----------------- |
+| petstore | 20 KB     | 4,953 → **1,585**     | 3×        | 100% → **100%**   |
+| cursor   | 72 KB     | 12,548 → **1,833**    | 7×        | 0% → **100%**     |
+| gitea    | 820 KB    | 148,146 → **866**     | 171×      | 0% → **100%**     |
+| stripe   | 7.5 MB    | 1,054,928 → **5,106** | **207×**  | 0% → **100%**     |
+
 
 *Tokens* = full spec vs. `openstash show --expand` for one operation (tiktoken `o200k_base`).
 *Accuracy* = a 14B model picking the correct `{method, path}` from a plain-English task,
@@ -31,9 +33,9 @@ For each task it builds three views of the same operation and tokenizes them:
 
 - **A. full-dump** — the entire `spec.json`. What you'd paste with no tool.
 - **B. naive jq + ref-chasing** — pull `paths[path][method]` from the raw spec, then follow
-  its `$ref`s by hand. Reported at **1-hop** (op + direct schemas) and **full closure**
-  (every transitively reachable schema), plus the `$ref` count = round-trips a grep-based
-  agent makes manually.
+its `$ref`s by hand. Reported at **1-hop** (op + direct schemas) and **full closure**
+(every transitively reachable schema), plus the `$ref` count = round-trips a grep-based
+agent makes manually.
 - **C. openstash** — the real output of `openstash show … --expand`.
 
 **Honest finding:** C ≈ B on raw tokens — openstash isn't magically smaller than careful
@@ -52,7 +54,7 @@ for a natural-language task. Three arms:
 
 - **closed-book** — no spec. The hallucination floor.
 - **full-dump** — the raw spec, truncated to a realistic budget (`DUMP_BUDGET` tokens).
-  On big specs the target op falls outside the window — a deliberate, realistic failure mode.
+On big specs the target op falls outside the window — a deliberate, realistic failure mode.
 - **openstash** — the slim `openstash search <query>` surface (~500 tokens).
 
 Same model, same question, same grader (normalized exact-match on `{method, path}`, with
@@ -60,11 +62,12 @@ path-template canonicalization so `{owner}`, `:owner`, and a literal value compa
 Any accuracy delta is attributable to *how the API info was delivered*.
 
 **What the failures look like** (these are the real story, not the means):
+
 - **closed-book** invents plausible-but-wrong paths — `/pets` not `/pet`, `/agents` missing
-  the `/v1`, a fabricated `PUT /charges/{id}`.
+the `/v1`, a fabricated `PUT /charges/{id}`.
 - **full-dump (truncated)** actively *misleads* on big specs: for gitea it emitted
-  `/api/v1/repos/...` (grabbed a server prefix from the truncated head); for Stripe the
-  relevant op was truncated out, so it answered an unrelated `PATCH /v1/accounts/{account_id}`.
+`/api/v1/repos/...` (grabbed a server prefix from the truncated head); for Stripe the
+relevant op was truncated out, so it answered an unrelated `PATCH /v1/accounts/{account_id}`.
 - **openstash** gets all four right.
 
 → writes `accuracy.md`
@@ -74,11 +77,11 @@ Any accuracy delta is attributable to *how the API info was delivered*.
 - **One variable.** Across arms only the context shape changes — model, prompt, and grader are fixed.
 - **Ground truth from the spec**, not vibes — `tasks.json` pins `{method, path}`; grading is auto.
 - **Baselines are steelmanned** — full-dump is the naive paste; the `jq` arm resolves refs *for*
-  the competitor; closed-book exposes the floor.
+the competitor; closed-book exposes the floor.
 - **Scope.** Endpoint *selection* only. Param/schema-level correctness (using `show`/`gather`/
-  `schema`) is a natural next task type and reuses the same `tasks.json`.
+`schema`) is a natural next task type and reuses the same `tasks.json`.
 - **The harness caught its own bug:** the first Stripe task was self-contradictory ("create"
-  labeled on the *update* endpoint); it was fixed before the final run.
+labeled on the *update* endpoint); it was fixed before the final run.
 
 ## Reproduce
 
@@ -101,9 +104,7 @@ python3 -m venv .venv && .venv/bin/pip install -r bench/requirements.txt
 
 # 4. run
 .venv/bin/python bench/run.py                                # context cost (no model)
-OLLAMA_HOST=https://your-ollama \
-OLLAMA_MODEL=qwen2.5-coder:14b \
-  .venv/bin/python bench/accuracy.py                         # accuracy (model in loop)
+.venv/bin/python bench/accuracy.py                         # accuracy (model in loop)
 ```
 
 Env knobs: `OPENSTASH_BIN`, `OPENSTASH_STORE`, `OLLAMA_HOST`, `OLLAMA_MODEL`,
@@ -111,3 +112,4 @@ Env knobs: `OPENSTASH_BIN`, `OPENSTASH_STORE`, `OLLAMA_HOST`, `OLLAMA_MODEL`,
 
 > Note: a flaky/low-memory Ollama host may choke on the larger full-dump prompts. If runs
 > stall, lower `DUMP_BUDGET` (e.g. 3500) and `NUM_CTX` (e.g. 4096).
+
