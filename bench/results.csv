@@ -1,0 +1,5 @@
+key,method,path,full,op_raw,naive_1hop,naive_closure,refs_direct,refs_closure,os_search,os_show,os_expand
+petstore,POST,/pet,4953,326,589,609,1,3,458,355,1585
+cursor,POST,/v1/agents,12548,283,1868,4989,8,25,442,259,1833
+gitea,GET,/repos/{owner}/{repo}/issues,148146,760,819,3328,2,9,415,791,866
+stripe,POST,/v1/charges/{charge},1054928,1341,5230,261878,2,854,648,388,5106
