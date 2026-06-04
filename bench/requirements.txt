@@ -1,0 +1,6 @@
+# Benchmark dependencies. Install into a venv:
+#   python3 -m venv .venv && .venv/bin/pip install -r bench/requirements.txt
+#
+# accuracy.py talks to Ollama over plain HTTP via the stdlib (urllib),
+# so the only third-party dependency is the tokenizer.
+tiktoken>=0.13,<0.14

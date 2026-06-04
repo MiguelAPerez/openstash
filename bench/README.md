@@ -96,14 +96,14 @@ curl -fsSL -o /tmp/stripe.json   https://raw.githubusercontent.com/stripe/openap
 /tmp/openstash --store /tmp/benchstore add stripe   --from /tmp/stripe.json
 # gitea + cursor: add from your own sources, or copy from ~/.openstash/specs
 
-# 3. tokenizer
-python3 -m venv /tmp/benchvenv && /tmp/benchvenv/bin/pip install tiktoken
+# 3. tokenizer (into a venv)
+python3 -m venv .venv && .venv/bin/pip install -r bench/requirements.txt
 
 # 4. run
-/tmp/benchvenv/bin/python bench/run.py                       # context cost (no model)
+.venv/bin/python bench/run.py                                # context cost (no model)
 OLLAMA_HOST=https://your-ollama \
 OLLAMA_MODEL=qwen2.5-coder:14b \
-  /tmp/benchvenv/bin/python bench/accuracy.py                # accuracy (model in loop)
+  .venv/bin/python bench/accuracy.py                         # accuracy (model in loop)
 ```
 
 Env knobs: `OPENSTASH_BIN`, `OPENSTASH_STORE`, `OLLAMA_HOST`, `OLLAMA_MODEL`,
