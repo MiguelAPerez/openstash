@@ -2,7 +2,6 @@
 
 A way to cache OpenAPI specs locally so you (or an agent) can look up endpoints without re-downloading or parsing huge `swagger.json` files every time.
 
-
 *Endpoints your agent actually finds. [See the benchmarks →](bench/README.md)*
 
 
