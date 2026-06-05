@@ -1,0 +1,29 @@
+{
+  "comment": "Each task = an agent needs to fully understand ONE operation in order to call it. target = the operation; query = how an agent would discover it via search.",
+  "tasks": [
+    {
+      "key": "petstore",
+      "query": "add pet",
+      "method": "POST",
+      "path": "/pet"
+    },
+    {
+      "key": "cursor",
+      "query": "launch agent",
+      "method": "POST",
+      "path": "/v1/agents"
+    },
+    {
+      "key": "gitea",
+      "query": "list repo issues",
+      "method": "GET",
+      "path": "/repos/{owner}/{repo}/issues"
+    },
+    {
+      "key": "stripe",
+      "query": "update charge",
+      "method": "POST",
+      "path": "/v1/charges/{charge}"
+    }
+  ]
+}

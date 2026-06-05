@@ -1,6 +1,17 @@
 # openstash
 
-**openstash** caches OpenAPI specs locally so you (or an agent) can look up endpoints without re-downloading or parsing huge `swagger.json` files every time.
+A way to cache OpenAPI specs locally so you (or an agent) can look up endpoints without re-downloading or parsing huge `swagger.json` files every time.
+
+*Endpoints your agent actually finds. [See the benchmarks →](bench/README.md)*
+
+
+| Spec     | Size   | Full spec | openstash | Saved    | Accuracy      |
+| -------- | ------ | --------- | --------- | -------- | ------------- |
+| petstore | 20 KB  | 4,953     | 1,585     | 3×       | 100% → 100%   |
+| cursor   | 72 KB  | 12,548    | 1,833     | 7×       | 0% → 100%     |
+| gitea    | 820 KB | 148,146   | 866       | 171×     | 0% → 100%     |
+| stripe   | 7.5 MB | 1,054,928 | 5,106     | **207×** | 0% → **100%** |
+
 
 ## Why use it?
 
