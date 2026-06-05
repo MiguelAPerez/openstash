@@ -43,6 +43,8 @@ def run(*args) -> str:
         [BIN, "--store", STORE, *args],
         capture_output=True, text=True,
     )
+    if out.returncode != 0:
+        sys.exit(f"openstash {' '.join(args)} failed (exit {out.returncode}):\n{out.stderr.strip()}")
     return out.stdout
 
 

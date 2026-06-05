@@ -5,7 +5,7 @@ Accuracy eval for openstash — model in the loop, context held as the only vari
 Same model, same question ("which endpoint does X?"), three context arms:
   closed-book : no spec at all          -> hallucination floor
   full-dump   : raw spec, truncated to a realistic local context budget
-  openstash   : `gather --expand` output for the query (slim, targeted)
+  openstash   : `openstash search` output for the query (slim, targeted)
 
 Task = pick the correct {method, path} for a natural-language description.
 Ground truth comes from tasks.json. Grading is normalized exact match.
@@ -26,7 +26,7 @@ import tiktoken
 
 BIN = os.environ.get("OPENSTASH_BIN", "/tmp/openstash")
 STORE = os.environ.get("OPENSTASH_STORE", "/tmp/benchstore")
-HOST = os.environ.get("OLLAMA_HOST", "https://ollama.miguelaperez.dev")
+HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:14b")
 N = int(os.environ.get("BENCH_N", "3"))
 DUMP_BUDGET = int(os.environ.get("DUMP_BUDGET", "3500"))  # tokens of spec a naive paste fits
@@ -57,11 +57,17 @@ def truncate(s, budget):
 
 
 def spec_path(key):
-    return sorted(glob.glob(os.path.join(STORE, "specs", key, "*", "spec.json")))[-1]
+    hits = sorted(glob.glob(os.path.join(STORE, "specs", key, "*", "spec.json")))
+    if not hits:
+        sys.exit(f"no stored spec for {key!r} — run `openstash add` first")
+    return hits[-1]
 
 
 def run(*args):
-    return subprocess.run([BIN, "--store", STORE, *args], capture_output=True, text=True).stdout
+    result = subprocess.run([BIN, "--store", STORE, *args], capture_output=True, text=True)
+    if result.returncode != 0:
+        sys.exit(f"openstash {' '.join(args)} failed (exit {result.returncode}):\n{result.stderr.strip()}")
+    return result.stdout
 
 
 def generate(prompt, retries=4):
