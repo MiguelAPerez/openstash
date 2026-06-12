@@ -163,6 +163,8 @@ func diffOperations(baseline, target []OperationIndex) (added, removed []Operati
 	return added, removed, changed
 }
 
+// operationChanges compares only the fields captured in OperationIndex (operationId, summary,
+// description, tags). Parameter and response changes are not detected.
 func operationChanges(baseline, target OperationIndex) map[string]FieldChange {
 	changes := map[string]FieldChange{}
 	if baseline.OperationID != target.OperationID {

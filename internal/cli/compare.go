@@ -72,10 +72,10 @@ Examples:
 			}
 
 			if sectionSet["operations"] {
-				output["operations"] = limitCompareOps(result.Operations, limit)
+				output["operations"] = limitSection(result.Operations.Added, result.Operations.Removed, result.Operations.Changed, limit)
 			}
 			if sectionSet["schemas"] {
-				output["schemas"] = limitCompareSchemas(result.Schemas, limit)
+				output["schemas"] = limitSection(result.Schemas.Added, result.Schemas.Removed, result.Schemas.Changed, limit)
 			}
 
 			return out.JSON(output)
@@ -92,7 +92,7 @@ func parseCompareSections(sections []string) (map[string]bool, error) {
 	if len(sections) == 0 {
 		return map[string]bool{"operations": true, "schemas": true}, nil
 	}
-	out := make(map[string]bool)
+	set := make(map[string]bool)
 	for _, raw := range sections {
 		for _, part := range strings.Split(raw, ",") {
 			part = strings.TrimSpace(part)
@@ -102,47 +102,27 @@ func parseCompareSections(sections []string) (map[string]bool, error) {
 			if !validCompareSections[part] {
 				return nil, fmt.Errorf("unknown --section %q; valid values: operations, schemas", part)
 			}
-			out[part] = true
+			set[part] = true
 		}
 	}
-	return out, nil
+	return set, nil
 }
 
-func limitCompareOps(ops spec.CompareOpsResult, limit int) map[string]any {
-	added, addedTotal := limitSlice(ops.Added, limit)
-	removed, removedTotal := limitSlice(ops.Removed, limit)
-	changed, changedTotal := limitSlice(ops.Changed, limit)
+func limitSection[A, R, C any](added []A, removed []R, changed []C, limit int) map[string]any {
+	shownAdded, totalAdded := limitSlice(added, limit)
+	shownRemoved, totalRemoved := limitSlice(removed, limit)
+	shownChanged, totalChanged := limitSlice(changed, limit)
 
 	result := map[string]any{
-		"added":   added,
-		"removed": removed,
-		"changed": changed,
+		"added":   shownAdded,
+		"removed": shownRemoved,
+		"changed": shownChanged,
 	}
 	if limit > 0 {
 		result["totals"] = map[string]int{
-			"added":   addedTotal,
-			"removed": removedTotal,
-			"changed": changedTotal,
-		}
-	}
-	return result
-}
-
-func limitCompareSchemas(schemas spec.CompareSchemas, limit int) map[string]any {
-	added, addedTotal := limitSlice(schemas.Added, limit)
-	removed, removedTotal := limitSlice(schemas.Removed, limit)
-	changed, changedTotal := limitSlice(schemas.Changed, limit)
-
-	result := map[string]any{
-		"added":   added,
-		"removed": removed,
-		"changed": changed,
-	}
-	if limit > 0 {
-		result["totals"] = map[string]int{
-			"added":   addedTotal,
-			"removed": removedTotal,
-			"changed": changedTotal,
+			"added":   totalAdded,
+			"removed": totalRemoved,
+			"changed": totalChanged,
 		}
 	}
 	return result
@@ -150,10 +130,14 @@ func limitCompareSchemas(schemas spec.CompareSchemas, limit int) map[string]any 
 
 func limitSlice[T any](items []T, limit int) (shown []T, total int) {
 	total = len(items)
-	if limit <= 0 || len(items) <= limit {
-		return items, total
+	shown = items
+	if shown == nil {
+		shown = []T{}
 	}
-	return items[:limit], total
+	if limit > 0 && len(items) > limit {
+		shown = items[:limit]
+	}
+	return shown, total
 }
 
 func loadRef(ref string) (key, version string, doc map[string]any, err error) {
