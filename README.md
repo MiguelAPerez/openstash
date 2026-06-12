@@ -99,6 +99,29 @@ openstash gather gitea "subscription" --expand
 openstash gather gitea@1.0.0 --path /user/repos --method GET
 ```
 
+### dump — full stored spec
+
+Print the complete OpenAPI document from the local store (pipe to `jq`, redirect to a file, etc.).
+
+```bash
+openstash dump gitea
+openstash dump forgejo@15.0.0 | jq '.info'
+```
+
+### compare — diff two specs
+
+Compare operations and schemas between two stored specs. The first argument is the **baseline**; the second is the **target**.
+
+- **added** — present in target only
+- **removed** — present in baseline only
+- **changed** — present in both with differences
+
+```bash
+openstash compare forgejo@12 forgejo@15
+openstash compare forgejo gitea --brief
+openstash compare forgejo gitea --section operations --limit 10
+```
+
 ### refresh — check for updates
 
 Re-fetches the source and reports whether `info.version` changed (does not overwrite stored specs).
