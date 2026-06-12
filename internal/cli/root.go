@@ -28,6 +28,8 @@ func NewRoot() *cobra.Command {
 
 	root.AddCommand(newAdd())
 	root.AddCommand(newList())
+	root.AddCommand(newDump())
+	root.AddCommand(newCompare())
 	root.AddCommand(newSearch())
 	root.AddCommand(newShow())
 	root.AddCommand(newGather())
