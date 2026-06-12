@@ -157,3 +157,17 @@ func TestOperationChanges(t *testing.T) {
 		t.Fatalf("summary change = %+v", changes["summary"])
 	}
 }
+
+func TestTagComparisonElementWise(t *testing.T) {
+	// Join-based comparison would treat these as equal; element-wise must not.
+	a := OperationIndex{Method: "GET", Path: "/x", Tags: []string{"a", "b"}}
+	b := OperationIndex{Method: "GET", Path: "/x", Tags: []string{"a\x00b"}}
+	if len(operationChanges(a, b)) == 0 {
+		t.Fatal("expected tag diff for distinct tag slices")
+	}
+
+	same := OperationIndex{Method: "GET", Path: "/x", Tags: []string{"repository", "user"}}
+	if len(operationChanges(same, same)) != 0 {
+		t.Fatalf("identical tags should not produce changes: %+v", operationChanges(same, same))
+	}
+}

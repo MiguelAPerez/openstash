@@ -1,8 +1,8 @@
 package spec
 
 import (
+	"slices"
 	"sort"
-	"strings"
 )
 
 // FieldChange records a single field difference between baseline and target.
@@ -174,7 +174,7 @@ func operationChanges(baseline, target OperationIndex) map[string]FieldChange {
 	if baseline.Description != target.Description {
 		changes["description"] = FieldChange{Baseline: baseline.Description, Target: target.Description}
 	}
-	if strings.Join(baseline.Tags, "\x00") != strings.Join(target.Tags, "\x00") {
+	if !slices.Equal(baseline.Tags, target.Tags) {
 		changes["tags"] = FieldChange{Baseline: baseline.Tags, Target: target.Tags}
 	}
 	return changes
