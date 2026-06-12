@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+// FieldChange records a single field difference between baseline and target.
+type FieldChange struct {
+	Baseline any `json:"baseline,omitempty"`
+	Target   any `json:"target,omitempty"`
+}
+
 // CompareSide summarizes one spec in a diff.
 type CompareSide struct {
 	Key        string `json:"key"`
@@ -20,6 +26,7 @@ type CompareSummary struct {
 }
 
 // CompareCounts reports added, removed, changed, and unchanged items.
+// Added = in target only; removed = in baseline only; changed = in both with differences.
 type CompareCounts struct {
 	Added     int `json:"added"`
 	Removed   int `json:"removed"`
@@ -27,12 +34,11 @@ type CompareCounts struct {
 	Unchanged int `json:"unchanged"`
 }
 
-// OperationDiff is an operation present in both specs with differing metadata.
-type OperationDiff struct {
-	Method string         `json:"method"`
-	Path   string         `json:"path"`
-	Left   OperationIndex `json:"left"`
-	Right  OperationIndex `json:"right"`
+// OperationChange is an operation present in both specs with field-level diffs.
+type OperationChange struct {
+	Method  string                 `json:"method"`
+	Path    string                 `json:"path"`
+	Changes map[string]FieldChange `json:"changes"`
 }
 
 // SchemaDiff is a schema present in both specs with differing fields.
@@ -44,8 +50,8 @@ type SchemaDiff struct {
 
 // CompareResult is the full diff between two OpenAPI documents.
 type CompareResult struct {
-	Left       CompareSide      `json:"left"`
-	Right      CompareSide      `json:"right"`
+	Baseline   CompareSide      `json:"baseline"`
+	Target     CompareSide      `json:"target"`
 	Summary    CompareSummary   `json:"summary"`
 	Operations CompareOpsResult `json:"operations"`
 	Schemas    CompareSchemas   `json:"schemas"`
@@ -53,9 +59,9 @@ type CompareResult struct {
 
 // CompareOpsResult lists operation-level changes.
 type CompareOpsResult struct {
-	Added   []OperationIndex `json:"added"`
-	Removed []OperationIndex `json:"removed"`
-	Changed []OperationDiff  `json:"changed"`
+	Added   []OperationIndex  `json:"added"`
+	Removed []OperationIndex  `json:"removed"`
+	Changed []OperationChange `json:"changed"`
 }
 
 // CompareSchemas lists schema-level changes.
@@ -66,36 +72,37 @@ type CompareSchemas struct {
 }
 
 // Compare diffs two OpenAPI documents by operations and component schemas.
-func Compare(left, right map[string]any) CompareResult {
-	leftOps := BuildIndex(left)
-	rightOps := BuildIndex(right)
-	leftSchemas := BuildSchemaIndex(left)
-	rightSchemas := BuildSchemaIndex(right)
+// The first document is the baseline; the second is the target.
+func Compare(baseline, target map[string]any) CompareResult {
+	baselineOps := BuildIndex(baseline)
+	targetOps := BuildIndex(target)
+	baselineSchemas := BuildSchemaIndex(baseline)
+	targetSchemas := BuildSchemaIndex(target)
 
-	opAdded, opRemoved, opChanged := diffOperations(leftOps, rightOps)
-	schemaAdded, schemaRemoved, schemaChanged := diffSchemas(leftSchemas, rightSchemas)
+	opAdded, opRemoved, opChanged := diffOperations(baselineOps, targetOps)
+	schemaAdded, schemaRemoved, schemaChanged := diffSchemas(baselineSchemas, targetSchemas)
 
 	return CompareResult{
-		Left: CompareSide{
-			Operations: len(leftOps),
-			Schemas:    len(leftSchemas),
+		Baseline: CompareSide{
+			Operations: len(baselineOps),
+			Schemas:    len(baselineSchemas),
 		},
-		Right: CompareSide{
-			Operations: len(rightOps),
-			Schemas:    len(rightSchemas),
+		Target: CompareSide{
+			Operations: len(targetOps),
+			Schemas:    len(targetSchemas),
 		},
 		Summary: CompareSummary{
 			Operations: CompareCounts{
 				Added:     len(opAdded),
 				Removed:   len(opRemoved),
 				Changed:   len(opChanged),
-				Unchanged: len(leftOps) - len(opRemoved) - len(opChanged),
+				Unchanged: len(baselineOps) - len(opRemoved) - len(opChanged),
 			},
 			Schemas: CompareCounts{
 				Added:     len(schemaAdded),
 				Removed:   len(schemaRemoved),
 				Changed:   len(schemaChanged),
-				Unchanged: len(leftSchemas) - len(schemaRemoved) - len(schemaChanged),
+				Unchanged: len(baselineSchemas) - len(schemaRemoved) - len(schemaChanged),
 			},
 		},
 		Operations: CompareOpsResult{
@@ -115,24 +122,23 @@ func operationKey(op OperationIndex) string {
 	return op.Method + " " + op.Path
 }
 
-func diffOperations(left, right []OperationIndex) (added, removed []OperationIndex, changed []OperationDiff) {
-	leftMap := make(map[string]OperationIndex, len(left))
-	for _, op := range left {
-		leftMap[operationKey(op)] = op
+func diffOperations(baseline, target []OperationIndex) (added, removed []OperationIndex, changed []OperationChange) {
+	baselineMap := make(map[string]OperationIndex, len(baseline))
+	for _, op := range baseline {
+		baselineMap[operationKey(op)] = op
 	}
-	rightMap := make(map[string]OperationIndex, len(right))
-	for _, op := range right {
-		rightMap[operationKey(op)] = op
+	targetMap := make(map[string]OperationIndex, len(target))
+	for _, op := range target {
+		targetMap[operationKey(op)] = op
 	}
 
-	for key, op := range rightMap {
-		if leftOp, ok := leftMap[key]; ok {
-			if !operationsEqual(leftOp, op) {
-				changed = append(changed, OperationDiff{
-					Method: op.Method,
-					Path:   op.Path,
-					Left:   leftOp,
-					Right:  op,
+	for key, op := range targetMap {
+		if baselineOp, ok := baselineMap[key]; ok {
+			if changes := operationChanges(baselineOp, op); len(changes) > 0 {
+				changed = append(changed, OperationChange{
+					Method:  op.Method,
+					Path:    op.Path,
+					Changes: changes,
 				})
 			}
 			continue
@@ -140,8 +146,8 @@ func diffOperations(left, right []OperationIndex) (added, removed []OperationInd
 		added = append(added, op)
 	}
 
-	for key, op := range leftMap {
-		if _, ok := rightMap[key]; !ok {
+	for key, op := range baselineMap {
+		if _, ok := targetMap[key]; !ok {
 			removed = append(removed, op)
 		}
 	}
@@ -157,11 +163,21 @@ func diffOperations(left, right []OperationIndex) (added, removed []OperationInd
 	return added, removed, changed
 }
 
-func operationsEqual(a, b OperationIndex) bool {
-	return a.OperationID == b.OperationID &&
-		a.Summary == b.Summary &&
-		a.Description == b.Description &&
-		strings.Join(a.Tags, "\x00") == strings.Join(b.Tags, "\x00")
+func operationChanges(baseline, target OperationIndex) map[string]FieldChange {
+	changes := map[string]FieldChange{}
+	if baseline.OperationID != target.OperationID {
+		changes["operationId"] = FieldChange{Baseline: baseline.OperationID, Target: target.OperationID}
+	}
+	if baseline.Summary != target.Summary {
+		changes["summary"] = FieldChange{Baseline: baseline.Summary, Target: target.Summary}
+	}
+	if baseline.Description != target.Description {
+		changes["description"] = FieldChange{Baseline: baseline.Description, Target: target.Description}
+	}
+	if strings.Join(baseline.Tags, "\x00") != strings.Join(target.Tags, "\x00") {
+		changes["tags"] = FieldChange{Baseline: baseline.Tags, Target: target.Tags}
+	}
+	return changes
 }
 
 func sortOperations(ops []OperationIndex) {
@@ -173,23 +189,23 @@ func sortOperations(ops []OperationIndex) {
 	})
 }
 
-func diffSchemas(left, right []SchemaIndex) (added, removed []string, changed []SchemaDiff) {
-	leftMap := make(map[string]SchemaIndex, len(left))
-	for _, s := range left {
-		leftMap[s.Name] = s
+func diffSchemas(baseline, target []SchemaIndex) (added, removed []string, changed []SchemaDiff) {
+	baselineMap := make(map[string]SchemaIndex, len(baseline))
+	for _, s := range baseline {
+		baselineMap[s.Name] = s
 	}
-	rightMap := make(map[string]SchemaIndex, len(right))
-	for _, s := range right {
-		rightMap[s.Name] = s
+	targetMap := make(map[string]SchemaIndex, len(target))
+	for _, s := range target {
+		targetMap[s.Name] = s
 	}
 
-	for name, rightSchema := range rightMap {
-		leftSchema, ok := leftMap[name]
+	for name, targetSchema := range targetMap {
+		baselineSchema, ok := baselineMap[name]
 		if !ok {
 			added = append(added, name)
 			continue
 		}
-		fieldsAdded, fieldsRemoved := diffStringSets(leftSchema.Properties, rightSchema.Properties)
+		fieldsAdded, fieldsRemoved := diffStringSets(baselineSchema.Properties, targetSchema.Properties)
 		if len(fieldsAdded) > 0 || len(fieldsRemoved) > 0 {
 			changed = append(changed, SchemaDiff{
 				Name:          name,
@@ -199,8 +215,8 @@ func diffSchemas(left, right []SchemaIndex) (added, removed []string, changed []
 		}
 	}
 
-	for name := range leftMap {
-		if _, ok := rightMap[name]; !ok {
+	for name := range baselineMap {
+		if _, ok := targetMap[name]; !ok {
 			removed = append(removed, name)
 		}
 	}
@@ -213,22 +229,22 @@ func diffSchemas(left, right []SchemaIndex) (added, removed []string, changed []
 	return added, removed, changed
 }
 
-func diffStringSets(left, right []string) (added, removed []string) {
-	leftSet := make(map[string]bool, len(left))
-	for _, s := range left {
-		leftSet[s] = true
+func diffStringSets(baseline, target []string) (added, removed []string) {
+	baselineSet := make(map[string]bool, len(baseline))
+	for _, s := range baseline {
+		baselineSet[s] = true
 	}
-	rightSet := make(map[string]bool, len(right))
-	for _, s := range right {
-		rightSet[s] = true
+	targetSet := make(map[string]bool, len(target))
+	for _, s := range target {
+		targetSet[s] = true
 	}
-	for s := range rightSet {
-		if !leftSet[s] {
+	for s := range targetSet {
+		if !baselineSet[s] {
 			added = append(added, s)
 		}
 	}
-	for s := range leftSet {
-		if !rightSet[s] {
+	for s := range baselineSet {
+		if !targetSet[s] {
 			removed = append(removed, s)
 		}
 	}

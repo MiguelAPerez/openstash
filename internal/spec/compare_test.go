@@ -3,7 +3,7 @@ package spec
 import "testing"
 
 func TestCompareOperations(t *testing.T) {
-	left := map[string]any{
+	baseline := map[string]any{
 		"paths": map[string]any{
 			"/pets": map[string]any{
 				"get": map[string]any{
@@ -36,7 +36,7 @@ func TestCompareOperations(t *testing.T) {
 		},
 	}
 
-	right := map[string]any{
+	target := map[string]any{
 		"paths": map[string]any{
 			"/pets": map[string]any{
 				"get": map[string]any{
@@ -70,11 +70,7 @@ func TestCompareOperations(t *testing.T) {
 		},
 	}
 
-	result := Compare(left, right)
-	result.Left.Key = "left"
-	result.Left.Version = "1"
-	result.Right.Key = "right"
-	result.Right.Version = "2"
+	result := Compare(baseline, target)
 
 	if result.Summary.Operations.Added != 1 {
 		t.Fatalf("operations.added = %d, want 1", result.Summary.Operations.Added)
@@ -97,6 +93,13 @@ func TestCompareOperations(t *testing.T) {
 	}
 	if len(result.Operations.Changed) != 1 || result.Operations.Changed[0].Path != "/pets" {
 		t.Fatalf("unexpected changed op: %+v", result.Operations.Changed)
+	}
+	summaryChange, ok := result.Operations.Changed[0].Changes["summary"]
+	if !ok {
+		t.Fatalf("expected summary change, got %+v", result.Operations.Changed[0].Changes)
+	}
+	if summaryChange.Baseline != "List pets" || summaryChange.Target != "List all pets" {
+		t.Fatalf("summary change = %+v", summaryChange)
 	}
 
 	if result.Summary.Schemas.Added != 1 || result.Schemas.Added[0] != "Owner" {
@@ -127,5 +130,30 @@ func TestCompareIdentical(t *testing.T) {
 	}
 	if result.Summary.Operations.Unchanged != 1 {
 		t.Fatalf("operations.unchanged = %d, want 1", result.Summary.Operations.Unchanged)
+	}
+}
+
+func TestOperationChanges(t *testing.T) {
+	baseline := OperationIndex{
+		Method:      "GET",
+		Path:        "/pets",
+		OperationID: "listPets",
+		Summary:     "List pets",
+		Tags:        []string{"pets"},
+	}
+	target := OperationIndex{
+		Method:      "GET",
+		Path:        "/pets",
+		OperationID: "listPets",
+		Summary:     "List all pets",
+		Tags:        []string{"pets", "animals"},
+	}
+
+	changes := operationChanges(baseline, target)
+	if len(changes) != 2 {
+		t.Fatalf("expected 2 changes, got %d: %+v", len(changes), changes)
+	}
+	if changes["summary"].Baseline != "List pets" || changes["summary"].Target != "List all pets" {
+		t.Fatalf("summary change = %+v", changes["summary"])
 	}
 }
