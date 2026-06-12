@@ -1,3 +1,9 @@
+## v0.3.0 (2026-06-12)
+
+### Feat
+
+- add dump and compare commands (#8)
+
 ## v0.2.0 (2026-06-03)
 
 ### Feat
