@@ -21,13 +21,15 @@ func NewRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "openstash",
 		Short:   "Local OpenAPI cache and search for agents",
-		Long:    "Store OpenAPI specs by key@version. Use search (slim), show (one op), or gather (search + details).",
+		Long:    "Store OpenAPI specs by key@version. Use search (slim), show (one op), gather (search + details), dump (full spec), or compare (diff two specs).",
 		Version: version,
 	}
 	root.PersistentFlags().StringVar(&storeRoot, "store", "", "store directory (default: ~/.openstash)")
 
 	root.AddCommand(newAdd())
 	root.AddCommand(newList())
+	root.AddCommand(newDump())
+	root.AddCommand(newCompare())
 	root.AddCommand(newSearch())
 	root.AddCommand(newShow())
 	root.AddCommand(newGather())

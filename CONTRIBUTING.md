@@ -27,7 +27,7 @@ go mod download
 ```
 cmd/openstash/      # main entry point (thin: just calls cli.Execute)
 internal/
-  cli/              # cobra commands: add, list, search, show, gather, refresh, schema, has
+  cli/              # cobra commands: add, list, dump, compare, search, show, gather, refresh, schema, has, explain
   spec/             # OpenAPI parsing, indexing, schema/$ref resolution
   search/           # endpoint search/ranking
   store/            # on-disk store (key@version layout, versioning)
