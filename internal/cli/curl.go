@@ -53,15 +53,30 @@ Examples:
 				return err
 			}
 
-			if host == "" {
-				meta, merr := st.LoadMeta(key, version)
-				if merr != nil {
-					return fmt.Errorf("--host not set and could not read stored endpoint: %w", merr)
+			specHost, specPath := spec.ServerBase(doc)
+
+			if host != "" {
+				host = strings.TrimRight(host, "/")
+			} else {
+				meta, _ := st.LoadMeta(key, version)
+				endpoint := strings.TrimRight(meta.Endpoint, "/")
+				switch {
+				case endpoint != "":
+					host = endpoint
+				case specHost != "":
+					host = specHost + specPath
+					specPath = "" // already applied
+				default:
+					return fmt.Errorf("--host required: no endpoint stored for %s@%s and spec has no absolute server URL", key, version)
 				}
-				if meta.Endpoint == "" {
-					return fmt.Errorf("--host required: no endpoint stored for %s@%s", key, version)
+			}
+
+			// Append the spec path prefix when the base has no path yet
+			// (e.g. stored endpoint is https://gitea.example.com, basePath is /api/v1)
+			if specPath != "" {
+				if parsed, perr := url.Parse(host); perr == nil && (parsed.Path == "" || parsed.Path == "/") {
+					host += specPath
 				}
-				host = meta.Endpoint
 			}
 
 			var opPath, opMethod string
@@ -89,7 +104,7 @@ Examples:
 			return runCurl(runCurlArgs{
 				method:   opMethod,
 				path:     opPath,
-				host:     strings.TrimRight(host, "/"),
+				host:     host,
 				token:    token,
 				username: username,
 				password: password,
