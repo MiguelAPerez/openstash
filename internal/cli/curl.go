@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -18,6 +19,7 @@ var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 func newCurl() *cobra.Command {
 	var operationID, host, token, username, password string
 	var params []string
+	var prettyPrint bool
 
 	cmd := &cobra.Command{
 		Use:   "curl <key[@version]>",
@@ -106,14 +108,15 @@ Examples:
 			}
 
 			return runCurl(runCurlArgs{
-				method:   opMethod,
-				path:     opPath,
-				host:     host,
-				token:    token,
-				username: username,
-				password: password,
-				op:       op,
-				params:   kv,
+				method:      opMethod,
+				path:        opPath,
+				host:        host,
+				token:       token,
+				username:    username,
+				password:    password,
+				op:          op,
+				params:      kv,
+				prettyPrint: prettyPrint,
 			})
 		},
 	}
@@ -124,14 +127,16 @@ Examples:
 	cmd.Flags().StringVar(&username, "username", "", "Username for HTTP basic auth")
 	cmd.Flags().StringVar(&password, "password", "", "Password for HTTP basic auth")
 	cmd.Flags().StringArrayVar(&params, "param", nil, "key=value param (repeatable); placed in path, query, or body based on the spec")
+	cmd.Flags().BoolVar(&prettyPrint, "pretty-print", false, "pretty-print the JSON response")
 	return cmd
 }
 
 type runCurlArgs struct {
-	method, path, host    string
+	method, path, host        string
 	token, username, password string
-	op     *spec.OperationDetail
-	params map[string]string
+	op                        *spec.OperationDetail
+	params                    map[string]string
+	prettyPrint               bool
 }
 
 func parseParams(raw []string) (map[string]string, error) {
@@ -197,9 +202,39 @@ func runCurl(a runCurlArgs) error {
 	}
 
 	c := exec.Command("curl", curlArgs...)
-	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
-	return c.Run()
+
+	if !a.prettyPrint {
+		c.Stdout = os.Stdout
+		return c.Run()
+	}
+
+	var buf bytes.Buffer
+	c.Stdout = &buf
+	if err := c.Run(); err != nil {
+		return err
+	}
+
+	// Output format from curl is: <body>\n<status_code>
+	out := buf.String()
+	statusStart := strings.LastIndex(strings.TrimRight(out, "\n"), "\n")
+	responseBody, statusLine := out, ""
+	if statusStart >= 0 {
+		responseBody = out[:statusStart]
+		statusLine = strings.TrimSpace(out[statusStart+1:])
+	}
+
+	var v any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(responseBody)), &v); err == nil {
+		pretty, _ := json.MarshalIndent(v, "", "  ")
+		fmt.Println(string(pretty))
+	} else {
+		fmt.Print(responseBody)
+	}
+	if statusLine != "" {
+		fmt.Println(statusLine)
+	}
+	return nil
 }
 
 func pathParamNames(path string) []string {
