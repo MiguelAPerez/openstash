@@ -49,6 +49,9 @@ Examples:
 			if token == "" && username == "" {
 				return fmt.Errorf("auth required: --token or --username + --password")
 			}
+			if token == "" && username != "" && password == "" {
+				return fmt.Errorf("--password is required when using --username")
+			}
 
 			st, key, version, doc, index, err := mustLoad(args[0])
 			if err != nil {
@@ -60,7 +63,7 @@ Examples:
 			if host != "" {
 				host = strings.TrimRight(host, "/")
 			} else {
-				meta, _ := st.LoadMeta(key, version)
+				meta, metaErr := st.LoadMeta(key, version)
 				base := strings.TrimRight(meta.Endpoint, "/")
 				if base == "" && specHost != "" {
 					base = specHost
@@ -72,6 +75,9 @@ Examples:
 					}
 				}
 				if base == "" {
+					if metaErr != nil {
+						return fmt.Errorf("could not read spec metadata for %s@%s: %w", key, version, metaErr)
+					}
 					return fmt.Errorf("--host required: no endpoint stored for %s@%s and spec has no absolute server URL", key, version)
 				}
 				host = base
