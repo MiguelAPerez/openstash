@@ -59,16 +59,20 @@ Examples:
 				host = strings.TrimRight(host, "/")
 			} else {
 				meta, _ := st.LoadMeta(key, version)
-				endpoint := strings.TrimRight(meta.Endpoint, "/")
-				switch {
-				case endpoint != "":
-					host = endpoint
-				case specHost != "":
-					host = specHost + specPath
-					specPath = "" // already applied
-				default:
+				base := strings.TrimRight(meta.Endpoint, "/")
+				if base == "" && specHost != "" {
+					base = specHost
+				}
+				if base == "" {
+					// Infer host from the URL the spec was fetched from
+					if parsed, perr := url.Parse(meta.Source); perr == nil && parsed.IsAbs() {
+						base = parsed.Scheme + "://" + parsed.Host
+					}
+				}
+				if base == "" {
 					return fmt.Errorf("--host required: no endpoint stored for %s@%s and spec has no absolute server URL", key, version)
 				}
+				host = base
 			}
 
 			// Append the spec path prefix when the base has no path yet
