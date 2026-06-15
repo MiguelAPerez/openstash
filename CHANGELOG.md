@@ -1,3 +1,9 @@
+## v0.4.0 (2026-06-14)
+
+### Feat
+
+- smarter curl — operation IDs, auto host, pretty-print (#9)
+
 ## v0.3.0 (2026-06-12)
 
 ### Feat
