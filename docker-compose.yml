@@ -1,0 +1,7 @@
+services:
+  openstash:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dev-store:/data

@@ -2,14 +2,19 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/MiguelAPerez/openstash/internal/spec"
 	"github.com/MiguelAPerez/openstash/internal/store"
 )
 
 func openStore() (*store.Store, error) {
-	if storeRoot != "" {
-		return store.New(storeRoot)
+	root := storeRoot
+	if root == "" {
+		root = os.Getenv("OPENSTASH_STORE")
+	}
+	if root != "" {
+		return store.New(root)
 	}
 	return store.Default()
 }

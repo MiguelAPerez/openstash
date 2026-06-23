@@ -1,0 +1,174 @@
+package server
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/MiguelAPerez/openstash/internal/store"
+)
+
+func testServer(t *testing.T) (*Server, *store.Store) {
+	t.Helper()
+	st, err := store.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(st, ":0"), st
+}
+
+func testDoc(version string) map[string]any {
+	return map[string]any{
+		"openapi": "3.1.0",
+		"info":    map[string]any{"title": "Test", "version": version},
+		"paths": map[string]any{
+			"/items": map[string]any{
+				"get": map[string]any{"summary": "List items", "tags": []any{"items"}},
+			},
+			"/items/{id}": map[string]any{
+				"get": map[string]any{"summary": "Get item"},
+			},
+		},
+	}
+}
+
+func seedSpec(t *testing.T, st *store.Store, key, version string) {
+	t.Helper()
+	if _, _, err := st.Add(key, version, "file.json", "", testDoc(version)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHealth(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("status field = %v", body["status"])
+	}
+}
+
+func TestListAndDump(t *testing.T) {
+	srv, st := testServer(t)
+	seedSpec(t, st, "api", "1.0.0")
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/specs", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/specs/api", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dump latest status = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/specs/api/versions/1.0.0", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dump pinned status = %d", rec.Code)
+	}
+}
+
+func TestListVersions(t *testing.T) {
+	srv, st := testServer(t)
+	seedSpec(t, st, "api", "1.0.0")
+	seedSpec(t, st, "api", "2.0.0")
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/specs/api/versions", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	vers, _ := body["versions"].([]any)
+	if len(vers) != 2 {
+		t.Fatalf("versions = %v, want 2", vers)
+	}
+}
+
+func TestAddSpec(t *testing.T) {
+	srv, st := testServer(t)
+	specPath := filepath.Join(t.TempDir(), "spec.json")
+	data, err := json.Marshal(testDoc("3.0.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(specPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"key":  "petstore",
+		"from": specPath,
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body))
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if !st.Exists("petstore", "3.0.0") {
+		t.Fatal("spec was not stored")
+	}
+}
+
+func TestAddConflict(t *testing.T) {
+	srv, st := testServer(t)
+	seedSpec(t, st, "api", "1.0.0")
+
+	specPath := filepath.Join(t.TempDir(), "spec.json")
+	data, _ := json.Marshal(testDoc("1.0.0"))
+	_ = os.WriteFile(specPath, data, 0o644)
+
+	body, _ := json.Marshal(map[string]string{"key": "api", "from": specPath})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", rec.Code)
+	}
+}
+
+func TestOperationsSearchAndShow(t *testing.T) {
+	srv, st := testServer(t)
+	seedSpec(t, st, "api", "1.0.0")
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/specs/api/versions/1.0.0/operations?q=items", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search status = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/specs/api/versions/1.0.0/operations?detail=show&path=/items&method=GET", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("show status = %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNotFound(t *testing.T) {
+	srv, _ := testServer(t)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/specs/missing", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}

@@ -38,6 +38,7 @@ func NewRoot() *cobra.Command {
 	root.AddCommand(newHas())
 	root.AddCommand(newExplain())
 	root.AddCommand(newCurl())
+	root.AddCommand(newServe())
 
 	return root
 }

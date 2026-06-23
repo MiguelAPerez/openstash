@@ -1,0 +1,263 @@
+openapi: 3.1.0
+info:
+  title: openstash serve API
+  version: 0.4.0
+  description: HTTP API over the local openstash OpenAPI cache.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      operationId: health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+  /v1/specs:
+    get:
+      summary: List stored specs
+      operationId: listSpecs
+      responses:
+        "200":
+          description: Stored spec entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SpecEntry"
+    post:
+      summary: Ingest an OpenAPI document
+      operationId: addSpec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddSpecRequest"
+      responses:
+        "201":
+          description: Spec stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddSpecResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /v1/specs/{specKey}:
+    get:
+      summary: Dump latest stored version for a key
+      operationId: dumpLatest
+      parameters:
+        - $ref: "#/components/parameters/specKey"
+      responses:
+        "200":
+          description: Full OpenAPI document
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/specs/{specKey}/versions:
+    get:
+      summary: List stored versions for a key
+      operationId: listVersions
+      parameters:
+        - $ref: "#/components/parameters/specKey"
+      responses:
+        "200":
+          description: Version list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key, versions]
+                properties:
+                  key:
+                    type: string
+                  versions:
+                    type: array
+                    items:
+                      type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/specs/{specKey}/versions/{version}:
+    get:
+      summary: Dump a pinned spec version
+      operationId: dumpVersion
+      parameters:
+        - $ref: "#/components/parameters/specKey"
+        - $ref: "#/components/parameters/version"
+      responses:
+        "200":
+          description: Full OpenAPI document
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/specs/{specKey}/versions/{version}/operations:
+    get:
+      summary: Search, show, or gather operations
+      operationId: operations
+      parameters:
+        - $ref: "#/components/parameters/specKey"
+        - $ref: "#/components/parameters/version"
+        - name: detail
+          in: query
+          schema:
+            type: string
+            enum: [search, show, gather]
+            default: search
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 5
+        - name: pathPrefix
+          in: query
+          schema:
+            type: string
+        - name: method
+          in: query
+          schema:
+            type: string
+        - name: path
+          in: query
+          schema:
+            type: string
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: expand
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: in
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [paths, schemas, descriptions]
+      responses:
+        "200":
+          description: Operation results
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  parameters:
+    specKey:
+      name: specKey
+      in: path
+      required: true
+      schema:
+        type: string
+    version:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    SpecEntry:
+      type: object
+      properties:
+        key:
+          type: string
+        version:
+          type: string
+        source:
+          type: string
+        endpoint:
+          type: string
+        fetchedAt:
+          type: string
+          format: date-time
+        specVersion:
+          type: string
+    AddSpecRequest:
+      type: object
+      required: [key, from]
+      properties:
+        key:
+          type: string
+        from:
+          type: string
+          format: uri
+        version:
+          type: string
+        endpoint:
+          type: string
+          format: uri
+    AddSpecResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        meta:
+          type: object
+        indexed:
+          type: integer
+        schemas:
+          type: integer
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Spec or operation not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Spec already exists
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unprocessable:
+      description: Invalid OpenAPI document
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
