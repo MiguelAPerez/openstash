@@ -43,6 +43,24 @@ Verify:
 openstash --version
 ```
 
+### Docker (HTTP server)
+
+Container images are published to GitHub Container Registry on each release:
+
+```bash
+docker pull ghcr.io/miguelaperez/openstash:latest
+docker run -p 8080:8080 -v ~/.openstash:/data ghcr.io/miguelaperez/openstash:latest
+```
+
+The image runs `openstash serve` with the store at `/data`. Mount your local cache or an empty directory. API contract: [`api/serve.openapi.yaml`](api/serve.openapi.yaml).
+
+For local development from source:
+
+```bash
+docker compose up --build
+curl http://localhost:8080/health
+```
+
 ## Getting started
 
 ### Add your first spec
@@ -142,6 +160,13 @@ Override for a session:
 
 ```bash
 openstash --store /path/to/store list
+```
+
+Or set `OPENSTASH_STORE` (used by `serve` in containers):
+
+```bash
+export OPENSTASH_STORE=/path/to/store
+openstash serve --addr :8080
 ```
 
 YAML and JSON sources are normalized to JSON on disk.
