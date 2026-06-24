@@ -172,3 +172,52 @@ func TestNotFound(t *testing.T) {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
+
+func TestAddRejectsTraversalKey(t *testing.T) {
+	srv, st := testServer(t)
+	specPath := filepath.Join(t.TempDir(), "spec.json")
+	data, _ := json.Marshal(testDoc("1.0.0"))
+	if err := os.WriteFile(specPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, key := range []string{"..", "../escape", "a/b", "a@b"} {
+		body, _ := json.Marshal(map[string]string{"key": key, "from": specPath})
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("key %q: status = %d, want 400: %s", key, rec.Code, rec.Body.String())
+		}
+	}
+
+	// Nothing should have been written outside the store's specs/ directory.
+	escaped := filepath.Join(st.Root, "spec.json")
+	if _, err := os.Stat(escaped); err == nil {
+		t.Fatalf("traversal wrote spec outside specs/: %s", escaped)
+	}
+}
+
+func TestAddRejectsUnknownFields(t *testing.T) {
+	srv, _ := testServer(t)
+	body := []byte(`{"key":"api","from":"x","bogus":"oops"}`)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestValidatePathSegment(t *testing.T) {
+	valid := []string{"api", "petstore", "1.0.0", "v2-beta", "a.b.c"}
+	for _, v := range valid {
+		if err := validatePathSegment("key", v); err != nil {
+			t.Errorf("validatePathSegment(%q) = %v, want nil", v, err)
+		}
+	}
+	invalid := []string{"", ".", "..", "../x", "x/..", "a/b", `a\b`, "key@1.0"}
+	for _, v := range invalid {
+		if err := validatePathSegment("key", v); err == nil {
+			t.Errorf("validatePathSegment(%q) = nil, want error", v)
+		}
+	}
+}

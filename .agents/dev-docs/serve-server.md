@@ -1,5 +1,10 @@
 # Containerized serve server
 
+> **Status: implemented.** `openstash serve` (`internal/server`, `internal/cli/serve.go`),
+> the `Dockerfile`, `docker-compose.yml`, the CI smoke-test job, and the GHCR publish
+> step in `release.yml` all ship in this repo. The design notes below are kept for
+> rationale; where they say "proposed"/"sketch"/"later", read them as shipped.
+
 ## Goal
 
 Give developers a long-running **HTTP API** over the existing openstash store so agents and tools can query cached OpenAPI specs without shelling out to the CLI. Ship it as a **Docker image** with a volume-mounted data directory.
@@ -10,7 +15,7 @@ Give developers a long-running **HTTP API** over the existing openstash store so
 - Specs live on disk under `--store` (default `~/.openstash/specs/<key>/<version>/`).
 - Core logic is already library code: `internal/store`, `internal/search`, `internal/spec`.
 - Commands emit **JSON to stdout** via `internal/out` — good shape to mirror in HTTP responses.
-- **No HTTP server, Dockerfile, or compose file** exists today.
+- The HTTP server, `Dockerfile`, and `docker-compose.yml` now live in `internal/server` and the repo root.
 - `internal/spec/server.go` parses OpenAPI `servers[]` URLs for `openstash curl`; it is not an HTTP server.
 
 ## Proposed shape
@@ -54,7 +59,7 @@ Keep handlers thin — reuse packages, don't fork business logic.
 Multi-stage build from repo root; distroless or alpine runtime.
 
 ```dockerfile
-# sketch — not implemented yet
+# shipped — see ./Dockerfile (kept here for reference)
 FROM golang:1.22 AS build
 WORKDIR /src
 COPY . .
@@ -80,7 +85,7 @@ Add to `.github/workflows/ci.yml`:
 1. `docker build`
 2. `curl -f localhost:8080/health`
 
-Optional later: publish image on release alongside tar.gz binaries.
+Publishing the image on release alongside the tar.gz binaries is wired up in `release.yml` (GHCR, `:latest` + the release tag).
 
 ## Non-goals (v1)
 
@@ -88,6 +93,26 @@ Optional later: publish image on release alongside tar.gz binaries.
 - MCP or gRPC — HTTP first; same handlers can back MCP later.
 - Static UI or nginx — the value is the Go store/search API.
 - New dependencies — stdlib HTTP is enough unless routing grows unwieldy.
+
+## Trust model
+
+The serve API has **no authentication**. It is meant to run on localhost (or a
+trusted network) for a single developer/agent. Treat anyone who can reach the
+port as fully trusted:
+
+- The CLI defaults `--addr` to `127.0.0.1:8080`. Binding it to `0.0.0.0`/`:8080`
+  (as the Dockerfile/compose do for port mapping) is an explicit opt-in — only
+  expose the port to networks you trust.
+- `POST /v1/specs` loads `from` via `spec.LoadFrom`, which reads local files **and**
+  fetches `http(s)` URLs by design (it mirrors `openstash add`). On an exposed,
+  unauthenticated port this is an SSRF / local-file-read primitive — don't expose it.
+
+Defense in depth that *is* enforced regardless of bind address:
+
+- `key` and `version` are used as on-disk path segments, so handlers reject any
+  value containing `..`, `/`, `\`, or `@` (`validatePathSegment` in
+  `internal/server/handlers.go`) to prevent traversal out of the store root.
+- `POST /v1/specs` caps the request body (64 KiB) and rejects unknown JSON fields.
 
 ## Decisions (OpenAPI 3.1 aligned)
 

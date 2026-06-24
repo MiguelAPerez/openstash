@@ -17,6 +17,42 @@ var validInScopes = map[string]bool{
 	"schemas": true,
 }
 
+// maxAddBodyBytes caps the POST /v1/specs request body to guard against
+// oversized payloads. The body only carries a handful of short string fields.
+const maxAddBodyBytes = 64 << 10 // 64 KiB
+
+// validatePathSegment rejects key/version values that could escape the store
+// root once joined into an on-disk path. The store uses these as path segments
+// (see store.specDir), and sanitize() only collapses separators/spaces — it does
+// not strip "..", so traversal sequences must be rejected here. '@' is also
+// rejected so keys can't smuggle key@version semantics into single-segment routes.
+func validatePathSegment(kind, value string) error {
+	if value == "" {
+		return fmt.Errorf("%s is required", kind)
+	}
+	if value == "." || strings.Contains(value, "..") {
+		return fmt.Errorf("invalid %s: must not contain path traversal sequences", kind)
+	}
+	if strings.ContainsAny(value, `/\@`) {
+		return fmt.Errorf("invalid %s: must not contain '/', '\\', or '@'", kind)
+	}
+	return nil
+}
+
+// validateRefParams validates a key+version pair from path params, writing a
+// 400 response and returning a non-nil error on the first invalid segment.
+func validateRefParams(w http.ResponseWriter, key, version string) error {
+	if err := validatePathSegment("key", key); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return err
+	}
+	if err := validatePathSegment("version", version); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return err
+	}
+	return nil
+}
+
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
@@ -51,8 +87,12 @@ type addSpecRequest struct {
 }
 
 func (s *Server) handleAddSpec(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAddBodyBytes)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
 	var req addSpecRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := dec.Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
@@ -64,6 +104,10 @@ func (s *Server) handleAddSpec(w http.ResponseWriter, r *http.Request) {
 
 	if req.Key == "" || req.From == "" {
 		writeError(w, http.StatusBadRequest, "key and from are required")
+		return
+	}
+	if err := validatePathSegment("key", req.Key); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -80,6 +124,10 @@ func (s *Server) handleAddSpec(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnprocessableEntity, "version required (spec has no info.version)")
 			return
 		}
+	}
+	if err := validatePathSegment("version", version); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
 	}
 
 	if s.store.Exists(req.Key, version) {
@@ -103,6 +151,10 @@ func (s *Server) handleAddSpec(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDumpLatest(w http.ResponseWriter, r *http.Request) {
 	specKey := r.PathValue("specKey")
+	if err := validatePathSegment("key", specKey); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	key, version, err := s.resolveLatest(specKey)
 	if err != nil {
 		writeResolveError(w, err)
@@ -113,6 +165,10 @@ func (s *Server) handleDumpLatest(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 	specKey := r.PathValue("specKey")
+	if err := validatePathSegment("key", specKey); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	vers, err := s.store.VersionsForKey(specKey)
 	if err != nil {
 		writeStoreError(w, err)
@@ -132,6 +188,9 @@ func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDumpVersion(w http.ResponseWriter, r *http.Request) {
 	specKey := r.PathValue("specKey")
 	version := r.PathValue("version")
+	if err := validateRefParams(w, specKey, version); err != nil {
+		return
+	}
 	if !s.store.Exists(specKey, version) {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("not found: %s@%s", specKey, version))
 		return
@@ -151,6 +210,9 @@ func (s *Server) writeDump(w http.ResponseWriter, key, version string) {
 func (s *Server) handleOperations(w http.ResponseWriter, r *http.Request) {
 	specKey := r.PathValue("specKey")
 	version := r.PathValue("version")
+	if err := validateRefParams(w, specKey, version); err != nil {
+		return
+	}
 
 	key, ver, doc, index, err := s.loadSpec(specKey, version)
 	if err != nil {
