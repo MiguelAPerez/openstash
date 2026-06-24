@@ -1,0 +1,10 @@
+services:
+  openstash:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dev-store:/data
+    # environment:
+    #   # Max POST /v1/specs request body in bytes (default 65536 = 64 KiB).
+    #   OPENSTASH_MAX_BODY_BYTES: "1048576"

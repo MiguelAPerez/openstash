@@ -39,3 +39,28 @@ jobs:
 
       - name: Run tests
         run: go test -race -count=1 ./...
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t openstash:test .
+
+      - name: Smoke test
+        run: |
+          docker run -d --name openstash -p 8080:8080 openstash:test
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs openstash
+          exit 1
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f openstash
