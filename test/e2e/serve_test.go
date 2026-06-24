@@ -99,7 +99,7 @@ func mustJSONRequest(t *testing.T, client *http.Client, method, url string, body
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -229,7 +229,7 @@ func TestServeE2E(t *testing.T) {
 		t.Fatalf("gather operations empty: %#v", body)
 	}
 
-	code, body = mustJSONRequest(t, client, http.MethodPost, base+"/v1/specs", map[string]string{
+	code, _ = mustJSONRequest(t, client, http.MethodPost, base+"/v1/specs", map[string]string{
 		"key":  "api",
 		"from": specPath,
 	})
@@ -237,7 +237,7 @@ func TestServeE2E(t *testing.T) {
 		t.Fatalf("POST duplicate = %d, want 409", code)
 	}
 
-	code, body = mustJSONRequest(t, client, http.MethodGet, base+"/v1/specs/missing", nil)
+	code, _ = mustJSONRequest(t, client, http.MethodGet, base+"/v1/specs/missing", nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("GET missing = %d, want 404", code)
 	}
