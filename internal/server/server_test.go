@@ -207,6 +207,44 @@ func TestAddRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestGetRoutesRejectTraversal(t *testing.T) {
+	srv, st := testServer(t)
+	seedSpec(t, st, "api", "1.0.0")
+
+	// Values with no '/' so ServeMux path-cleaning can't mask the guard:
+	// ".." embedded in a segment and a smuggled key@version both must 400.
+	cases := []string{
+		"/v1/specs/a..b",
+		"/v1/specs/api@1.0.0",
+		"/v1/specs/a..b/versions",
+		"/v1/specs/api/versions/v..1",
+		"/v1/specs/a..b/versions/1.0.0",
+		"/v1/specs/api/versions/v..1/operations",
+	}
+	for _, path := range cases {
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("GET %s: status = %d, want 400: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestAddRejectsOversizedBody(t *testing.T) {
+	srv, _ := testServer(t)
+	// Pad an otherwise-valid body past the 64 KiB cap.
+	big := make([]byte, 128<<10)
+	for i := range big {
+		big[i] = 'a'
+	}
+	body, _ := json.Marshal(map[string]string{"key": "api", "from": "x", "endpoint": string(big)})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestValidatePathSegment(t *testing.T) {
 	valid := []string{"api", "petstore", "1.0.0", "v2-beta", "a.b.c"}
 	for _, v := range valid {
