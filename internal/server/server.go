@@ -7,15 +7,26 @@ import (
 	"github.com/MiguelAPerez/openstash/internal/store"
 )
 
+// DefaultMaxBodyBytes caps the POST /v1/specs request body when no override is
+// configured. The body only carries a handful of short string fields, so the
+// default is deliberately small; raise it via OPENSTASH_MAX_BODY_BYTES if you
+// post specs by value through a field rather than a URL/path.
+const DefaultMaxBodyBytes int64 = 64 << 10 // 64 KiB
+
 // Server exposes the openstash store over HTTP.
 type Server struct {
-	store *store.Store
-	http  *http.Server
+	store        *store.Store
+	http         *http.Server
+	maxBodyBytes int64
 }
 
-// New builds an HTTP server listening on addr.
-func New(st *store.Store, addr string) *Server {
-	s := &Server{store: st}
+// New builds an HTTP server listening on addr. A maxBodyBytes <= 0 falls back to
+// DefaultMaxBodyBytes.
+func New(st *store.Store, addr string, maxBodyBytes int64) *Server {
+	if maxBodyBytes <= 0 {
+		maxBodyBytes = DefaultMaxBodyBytes
+	}
+	s := &Server{store: st, maxBodyBytes: maxBodyBytes}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /v1/specs", s.handleListSpecs)

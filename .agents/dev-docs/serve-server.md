@@ -112,7 +112,8 @@ Defense in depth that *is* enforced regardless of bind address:
 - `key` and `version` are used as on-disk path segments, so handlers reject any
   value containing `..`, `/`, `\`, or `@` (`validatePathSegment` in
   `internal/server/handlers.go`) to prevent traversal out of the store root.
-- `POST /v1/specs` caps the request body (64 KiB) and rejects unknown JSON fields.
+- `POST /v1/specs` caps the request body (default 64 KiB, override via
+  `OPENSTASH_MAX_BODY_BYTES` or `--max-body-bytes`) and rejects unknown JSON fields.
 
 ## Decisions (OpenAPI 3.1 aligned)
 

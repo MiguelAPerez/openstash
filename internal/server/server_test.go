@@ -18,7 +18,7 @@ func testServer(t *testing.T) (*Server, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(st, ":0"), st
+	return New(st, ":0", 0), st
 }
 
 func testDoc(version string) map[string]any {
@@ -242,6 +242,37 @@ func TestAddRejectsOversizedBody(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestConfigurableBodyCap(t *testing.T) {
+	st, err := store.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A tiny 32-byte cap should reject an otherwise-small valid-looking body.
+	srv := New(st, ":0", 32)
+	body, _ := json.Marshal(map[string]string{"key": "api", "from": "https://example.test/openapi.json"})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for body over 32-byte cap: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNewBodyCapDefaults(t *testing.T) {
+	st, err := store.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := New(st, ":0", 0).maxBodyBytes; got != DefaultMaxBodyBytes {
+		t.Fatalf("maxBodyBytes with 0 = %d, want default %d", got, DefaultMaxBodyBytes)
+	}
+	if got := New(st, ":0", -5).maxBodyBytes; got != DefaultMaxBodyBytes {
+		t.Fatalf("maxBodyBytes with negative = %d, want default %d", got, DefaultMaxBodyBytes)
+	}
+	if got := New(st, ":0", 1024).maxBodyBytes; got != 1024 {
+		t.Fatalf("maxBodyBytes with 1024 = %d, want 1024", got)
 	}
 }
 

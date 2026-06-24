@@ -17,10 +17,6 @@ var validInScopes = map[string]bool{
 	"schemas": true,
 }
 
-// maxAddBodyBytes caps the POST /v1/specs request body to guard against
-// oversized payloads. The body only carries a handful of short string fields.
-const maxAddBodyBytes = 64 << 10 // 64 KiB
-
 // validatePathSegment rejects key/version values that could escape the store
 // root once joined into an on-disk path. The store uses these as path segments
 // (see store.specDir), and sanitize() only collapses separators/spaces — it does
@@ -87,7 +83,7 @@ type addSpecRequest struct {
 }
 
 func (s *Server) handleAddSpec(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxAddBodyBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, s.maxBodyBytes)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 

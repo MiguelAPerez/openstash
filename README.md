@@ -61,6 +61,22 @@ docker compose up --build
 curl http://localhost:8080/health
 ```
 
+#### Configuration
+
+| Env var | Flag | Default | Purpose |
+|---------|------|---------|---------|
+| `OPENSTASH_STORE` | `--store` | `~/.openstash` | Store directory (set to `/data` in the image) |
+| `OPENSTASH_MAX_BODY_BYTES` | `--max-body-bytes` | `65536` (64 KiB) | Max `POST /v1/specs` request body, in bytes |
+
+`POST /v1/specs` accepts a small JSON body (`key`, `from`, `version`, `endpoint`), so the default 64 KiB cap is plenty when `from` is a URL or file path. Raise it only if you post large specs by value. The flag takes precedence over the env var; both are optional.
+
+```bash
+# Allow up to 1 MiB request bodies
+docker run -p 8080:8080 -v ~/.openstash:/data \
+  -e OPENSTASH_MAX_BODY_BYTES=1048576 \
+  ghcr.io/miguelaperez/openstash:latest
+```
+
 ## Getting started
 
 ### Add your first spec
