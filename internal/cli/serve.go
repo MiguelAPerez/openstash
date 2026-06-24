@@ -26,6 +26,6 @@ func newServe() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&addr, "addr", ":8080", "listen address")
+	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:8080", "listen address")
 	return cmd
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/MiguelAPerez/openstash/internal/store"
 )
@@ -23,7 +24,13 @@ func New(st *store.Store, addr string) *Server {
 	mux.HandleFunc("GET /v1/specs/{specKey}/versions", s.handleListVersions)
 	mux.HandleFunc("GET /v1/specs/{specKey}/versions/{version}", s.handleDumpVersion)
 	mux.HandleFunc("GET /v1/specs/{specKey}/versions/{version}/operations", s.handleOperations)
-	s.http = &http.Server{Addr: addr, Handler: mux}
+	s.http = &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+	}
 	return s
 }
 

@@ -13,9 +13,8 @@ import (
 )
 
 var validInScopes = map[string]bool{
-	"paths":        true,
-	"schemas":      true,
-	"descriptions": true,
+	"paths":   true,
+	"schemas": true,
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -342,7 +341,7 @@ func parseInScopes(raw []string) (map[string]bool, error) {
 				continue
 			}
 			if !validInScopes[item] {
-				return nil, fmt.Errorf("unknown in value %q; valid values: paths, schemas, descriptions", item)
+				return nil, fmt.Errorf("unknown in value %q; valid values: paths, schemas", item)
 			}
 			scopeSet[item] = true
 		}

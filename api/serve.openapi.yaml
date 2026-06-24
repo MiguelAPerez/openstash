@@ -162,7 +162,7 @@ paths:
             type: array
             items:
               type: string
-              enum: [paths, schemas, descriptions]
+              enum: [paths, schemas]
       responses:
         "200":
           description: Operation results
@@ -213,7 +213,7 @@ components:
           type: string
         from:
           type: string
-          format: uri
+          description: Source URL (http/https) or file path readable by the server
         version:
           type: string
         endpoint:
