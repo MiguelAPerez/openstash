@@ -1,3 +1,10 @@
+## v0.5.0 (2026-07-09)
+
+### Feat
+
+- publish multi-arch Docker images with embedded version (#11)
+- add serve HTTP API and Docker image (#10)
+
 ## v0.4.0 (2026-06-14)
 
 ### Feat
