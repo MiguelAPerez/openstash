@@ -100,9 +100,9 @@ make web-dev    # Vite dev server with hot reload on http://localhost:5173
 `make web-dev` proxies `/v1` to `http://127.0.0.1:8080`, so run
 `openstash serve` alongside it (override with `OPENSTASH_API=http://host:port`).
 Routes are hash-based (`#/specs/<key>/versions/<version>`), so the Go server only
-serves `index.html` and fingerprinted assets. The Reference tab loads
-`reference.html` in an iframe because the Scalar viewer manages `location.hash`
-itself.
+serves `index.html` and fingerprinted assets. Spec content is untrusted: render it
+as text (no `dangerouslySetInnerHTML`, no inline `style` attributes — the server's
+Content-Security-Policy blocks them).
 
 Web tests and checks:
 

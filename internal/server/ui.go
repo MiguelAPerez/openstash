@@ -16,11 +16,10 @@ import (
 var webFS embed.FS
 
 // uiCSP keeps the UI to same-origin assets. Spec content is untrusted (it is
-// fetched from arbitrary URLs), so script stays same-origin only. Inline styles
-// are allowed because the embedded API reference viewer sets them at runtime.
-const uiCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-	"img-src 'self' data:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; " +
-	"frame-ancestors 'self'; frame-src 'self'; base-uri 'none'; form-action 'self'"
+// fetched from arbitrary URLs), so the UI renders it as text only and the policy
+// blocks inline script and styles as a second line of defense.
+const uiCSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+	"connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 
 const uiPlaceholder = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>openstash</title>

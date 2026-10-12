@@ -13,17 +13,20 @@ function statusClass(code: string): string {
 interface Props {
   op: OperationDetail;
   onRef?: (schema: string) => void;
+  /** Show the collapsible raw JSON block (off in long lists). */
+  showRaw?: boolean;
+  id?: string;
 }
 
 /** Human-readable rendering of one operation from the `show` endpoint. */
-export function OperationView({ op, onRef }: Props) {
+export function OperationView({ op, onRef, showRaw = true, id }: Props) {
   const params = (op.parameters ?? []).filter(isObject);
   const bodyParams = params.filter((p) => p.in === "body");
   const otherParams = params.filter((p) => p.in !== "body");
   const responses = Object.entries(op.responses ?? {}).sort(([a], [b]) => a.localeCompare(b));
 
   return (
-    <article className="operation">
+    <article className="operation" id={id}>
       <div className="detail-title">
         <Method method={op.method} />
         <span className="result-path">{op.path}</span>
@@ -132,10 +135,12 @@ export function OperationView({ op, onRef }: Props) {
         </section>
       )}
 
-      <details className="raw">
-        <summary>Raw JSON</summary>
-        <pre className="code">{JSON.stringify(op, null, 2)}</pre>
-      </details>
+      {showRaw && (
+        <details className="raw">
+          <summary>Raw JSON</summary>
+          <pre className="code">{JSON.stringify(op, null, 2)}</pre>
+        </details>
+      )}
     </article>
   );
 }

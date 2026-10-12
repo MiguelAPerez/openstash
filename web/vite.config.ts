@@ -22,13 +22,6 @@ export default defineConfig({
   build: {
     outDir,
     emptyOutDir: true,
-    chunkSizeWarningLimit: 4096,
-    rollupOptions: {
-      input: {
-        main: resolve(import.meta.dirname, "index.html"),
-        reference: resolve(import.meta.dirname, "reference.html"),
-      },
-    },
   },
   server: {
     proxy: {

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 export type Route =
   | { name: "home" }
   | { name: "explore"; key: string; version: string; query: URLSearchParams }
-  | { name: "reference"; key: string; version: string }
+  | { name: "reference"; key: string; version: string; query: URLSearchParams }
   | { name: "timeline"; key: string; query: URLSearchParams }
   | { name: "notFound" };
 
@@ -23,7 +23,7 @@ export function parseHash(hash: string): Route {
   if (parts[2] === "versions" && parts.length >= 4) {
     const version = parts[3];
     if (parts.length === 4) return { name: "explore", key, version, query };
-    if (parts.length === 5 && parts[4] === "reference") return { name: "reference", key, version };
+    if (parts.length === 5 && parts[4] === "reference") return { name: "reference", key, version, query };
   }
   return { name: "notFound" };
 }
@@ -50,7 +50,8 @@ export const href = {
   home: () => "#/",
   explore: (key: string, version: string, query?: Record<string, string | undefined>) =>
     withQuery(`#/specs/${enc(key)}/versions/${enc(version)}`, query),
-  reference: (key: string, version: string) => `#/specs/${enc(key)}/versions/${enc(version)}/reference`,
+  reference: (key: string, version: string, query?: Record<string, string | undefined>) =>
+    withQuery(`#/specs/${enc(key)}/versions/${enc(version)}/reference`, query),
   timeline: (key: string, query?: Record<string, string | undefined>) =>
     withQuery(`#/specs/${enc(key)}/timeline`, query),
 };

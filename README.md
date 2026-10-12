@@ -159,7 +159,7 @@ openstash serve            # then open http://127.0.0.1:8080/
 ```
 
 - **Explore** — search endpoints and schemas, inspect one operation with `$ref`s inlined.
-- **Reference** — the full API reference for any stored version (rendered with [Scalar](https://github.com/scalar/scalar)).
+- **Reference** — docs-style view of any stored version: overview and servers, operations grouped by tag, and every model (schema).
 - **Timeline** — every stored version of a key in order, with change counts between each step. Pick a step and walk through each added, removed, or changed endpoint and schema as a line diff (`j`/`k` for changes, `[`/`]` for steps).
 
 Store a new version of a spec under the same key (`openstash add gitea --from … --version 1.22.0`) to grow its timeline. Pass `--no-ui` to serve the API only.

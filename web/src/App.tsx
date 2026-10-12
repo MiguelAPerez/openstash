@@ -7,7 +7,7 @@ import { groupSpecs, SpecsContext } from "./lib/specs";
 import { useAsync } from "./lib/useAsync";
 import { Explore } from "./pages/Explore";
 import { Home } from "./pages/Home";
-import Reference from "./pages/Reference";
+import { Reference } from "./pages/Reference";
 import { Timeline } from "./pages/Timeline";
 
 export function App() {
@@ -87,7 +87,7 @@ export function App() {
         <main className="main">
           {route.name === "home" && <Home />}
           {route.name === "explore" && <Explore route={route} />}
-          {route.name === "reference" && <Reference specKey={route.key} version={route.version} />}
+          {route.name === "reference" && <Reference route={route} />}
           {route.name === "timeline" && <Timeline route={route} />}
           {route.name === "notFound" && (
             <div className="empty">

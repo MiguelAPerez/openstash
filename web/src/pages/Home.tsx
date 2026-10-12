@@ -18,7 +18,7 @@ export function Home() {
       {error && <p className="notice">Could not reach the openstash server: {error.message}</p>}
 
       {!loading && !error && groups.length === 0 && (
-        <div className="empty" style={{ marginTop: 20 }}>
+        <div className="empty home-empty">
           <p>No specs stored yet. Add one here, or from the CLI:</p>
           <pre className="code">openstash add petstore --from https://petstore3.swagger.io/api/v3/openapi.json</pre>
         </div>
