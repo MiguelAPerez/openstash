@@ -30,5 +30,11 @@ Thumbs.db
 # Claude Code agent worktrees
 .claude/
 
+# Release artifacts
+/dist/
 
-dist/
+# Web UI: dependencies and the build output embedded into the binary
+# (internal/server/ui.go). Only the placeholder that keeps go:embed happy is tracked.
+node_modules/
+/internal/server/web/dist/*
+!/internal/server/web/dist/.gitkeep

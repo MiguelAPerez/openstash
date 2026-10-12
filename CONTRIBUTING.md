@@ -11,8 +11,12 @@ your environment, build, run, test, and submit changes.
 - [**golangci-lint**](https://golangci-lint.run/) — optional locally, but CI
   runs it on every PR (pinned to `v1.62.2`)
 
-No other system dependencies are required. openstash is a single Go binary with a
-small dependency set (`cobra` for the CLI, `yaml.v3` for spec parsing).
+- **Node.js 22+** — only to work on or build the web UI in `web/`
+
+openstash is a single Go binary with a small dependency set (`cobra` for the CLI,
+`yaml.v3` for spec parsing). The web UI is a React + TypeScript app built with
+Vite and embedded into the binary; without building it, `openstash serve` shows a
+placeholder page at `/` and the API works as usual.
 
 ## Getting the source
 
@@ -32,14 +36,20 @@ internal/
   search/           # endpoint search/ranking
   store/            # on-disk store (key@version layout, versioning)
   out/              # output formatting helpers
-.github/workflows/  # ci.yml (lint + test), release.yml (tagged release builds)
+  server/           # HTTP API (openstash serve) and the embedded UI (web/dist)
+web/                # React + TypeScript UI source (Vite); builds into internal/server/web/dist
+.github/workflows/  # ci.yml (lint + test + web), release.yml (tagged release builds)
 ```
 
 All packages live under `internal/`, so they're private to this module.
 
 ## Building
 
-Build a local binary into `bin/`:
+`make build` builds the web UI and then the binary into `bin/openstash`.
+`make build-go` skips the UI (the binary embeds whatever is already in
+`internal/server/web/dist`).
+
+Build a local binary into `bin/` without make:
 
 ```bash
 go build -o bin/openstash ./cmd/openstash
@@ -78,6 +88,28 @@ while developing, point `--store` at a temp directory:
 ```bash
 go run ./cmd/openstash --store /tmp/openstash-dev add gitea --from ./swagger.json
 go run ./cmd/openstash --store /tmp/openstash-dev list
+```
+
+## Web UI
+
+```bash
+make web        # npm ci + typecheck + build into internal/server/web/dist
+make web-dev    # Vite dev server with hot reload on http://localhost:5173
+```
+
+`make web-dev` proxies `/v1` to `http://127.0.0.1:8080`, so run
+`openstash serve` alongside it (override with `OPENSTASH_API=http://host:port`).
+Routes are hash-based (`#/specs/<key>/versions/<version>`), so the Go server only
+serves `index.html` and fingerprinted assets. The Reference tab loads
+`reference.html` in an iframe because the Scalar viewer manages `location.hash`
+itself.
+
+Web tests and checks:
+
+```bash
+cd web
+npm run typecheck
+npm test
 ```
 
 ## Testing

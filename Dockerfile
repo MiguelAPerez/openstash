@@ -1,8 +1,17 @@
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+# vite.config.ts writes to ../internal/server/web/dist
+RUN npm run build
+
 FROM --platform=$BUILDPLATFORM golang:1.22 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=web /internal/server/web/dist ./internal/server/web/dist
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
