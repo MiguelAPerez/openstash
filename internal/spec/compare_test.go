@@ -171,3 +171,88 @@ func TestTagComparisonElementWise(t *testing.T) {
 		t.Fatalf("identical tags should not produce changes: %+v", operationChanges(same, same))
 	}
 }
+
+func TestCompareDetailedDetectsDefinitionChanges(t *testing.T) {
+	baseline := map[string]any{
+		"paths": map[string]any{
+			"/pets": map[string]any{
+				"get": map[string]any{
+					"summary":    "List pets",
+					"parameters": []any{map[string]any{"name": "limit", "in": "query"}},
+					"responses":  map[string]any{"200": map[string]any{"description": "ok"}},
+				},
+				"post": map[string]any{"summary": "Create pet"},
+			},
+		},
+		"components": map[string]any{"schemas": map[string]any{
+			"Pet": map[string]any{"type": "object", "properties": map[string]any{
+				"id": map[string]any{"type": "integer"},
+			}},
+			"Same": map[string]any{"type": "string"},
+		}},
+	}
+	target := map[string]any{
+		"paths": map[string]any{
+			"/pets": map[string]any{
+				"get": map[string]any{
+					"summary":    "List all pets",
+					"parameters": []any{map[string]any{"name": "limit", "in": "query", "required": true}},
+					"responses":  map[string]any{"200": map[string]any{"description": "ok"}},
+				},
+				"post": map[string]any{"summary": "Create pet", "deprecated": true},
+			},
+		},
+		"components": map[string]any{"schemas": map[string]any{
+			"Pet": map[string]any{"type": "object", "properties": map[string]any{
+				"id": map[string]any{"type": "string"},
+			}},
+			"Same": map[string]any{"type": "string"},
+		}},
+	}
+
+	// Plain Compare only sees the summary change.
+	if got := Compare(baseline, target).Summary.Operations.Changed; got != 1 {
+		t.Fatalf("Compare changed ops = %d, want 1", got)
+	}
+
+	res := CompareDetailed(baseline, target)
+	if res.Summary.Operations.Changed != 2 || res.Summary.Operations.Unchanged != 0 {
+		t.Fatalf("operation summary = %+v", res.Summary.Operations)
+	}
+	get, post := res.Operations.Changed[0], res.Operations.Changed[1]
+	if get.Method != "GET" || post.Method != "POST" {
+		t.Fatalf("changed ops not sorted: %+v", res.Operations.Changed)
+	}
+	if _, ok := get.Changes["summary"]; !ok {
+		t.Fatalf("GET lost index-level summary change: %+v", get.Changes)
+	}
+	if _, ok := get.Changes["parameters"]; !ok {
+		t.Fatalf("GET missing parameters change: %+v", get.Changes)
+	}
+	if _, ok := get.Changes["responses"]; ok {
+		t.Fatalf("GET responses unchanged but reported: %+v", get.Changes)
+	}
+	if _, ok := post.Changes["deprecated"]; !ok || len(post.Changes) != 1 {
+		t.Fatalf("POST changes = %+v, want only deprecated", post.Changes)
+	}
+
+	if res.Summary.Schemas.Changed != 1 || res.Summary.Schemas.Unchanged != 1 {
+		t.Fatalf("schema summary = %+v", res.Summary.Schemas)
+	}
+	if s := res.Schemas.Changed[0]; s.Name != "Pet" || !s.DefinitionChanged || len(s.FieldsAdded)+len(s.FieldsRemoved) != 0 {
+		t.Fatalf("schema diff = %+v", s)
+	}
+}
+
+func TestRawOperation(t *testing.T) {
+	doc := map[string]any{"paths": map[string]any{"/a": map[string]any{"get": map[string]any{"summary": "x"}}}}
+	if op := RawOperation(doc, "/a", "GET"); op == nil || op["summary"] != "x" {
+		t.Fatalf("RawOperation = %v", op)
+	}
+	if RawOperation(doc, "/a", "POST") != nil || RawOperation(doc, "/missing", "GET") != nil {
+		t.Fatal("expected nil for missing operation")
+	}
+	if RawOperation(map[string]any{}, "/a", "GET") != nil {
+		t.Fatal("expected nil when spec has no paths")
+	}
+}

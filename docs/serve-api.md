@@ -2,6 +2,8 @@
 
 openstash can run as a long-lived HTTP server (`openstash serve`) so agents and tools can query cached OpenAPI specs without shelling out to the CLI. Responses mirror the JSON the CLI prints.
 
+The same server hosts a browser UI at `/` (explore, API reference, version timeline with diffs). Disable it with `--no-ui`.
+
 **Base URL:** `http://localhost:8080` (default when running locally or via Docker on port 8080)
 
 **Contract:** [`api/serve.openapi.yaml`](../api/serve.openapi.yaml)
@@ -32,6 +34,7 @@ openstash serve --addr 127.0.0.1:8080
 |---------|------|---------|---------|
 | `OPENSTASH_STORE` | `--store` | `~/.openstash` | Store directory (`/data` in the Docker image) |
 | `OPENSTASH_MAX_BODY_BYTES` | `--max-body-bytes` | `65536` (64 KiB) | Max `POST /v1/specs` request body |
+| — | `--no-ui` | off | Serve the API only (no browser UI at `/`) |
 
 `POST /v1/specs` accepts a small JSON body (`key`, `from`, `version`, `endpoint`). The default 64 KiB cap is plenty when `from` is a URL or file path. Raise it only if you post large specs inline.
 
@@ -55,6 +58,10 @@ All endpoints return JSON. Errors look like `{"error":"..."}` with an appropriat
 | `GET` | `/v1/specs/{specKey}/versions` | list stored versions |
 | `GET` | `/v1/specs/{specKey}/versions/{version}` | `openstash dump` (pinned) |
 | `GET` | `/v1/specs/{specKey}/versions/{version}/operations` | `openstash search` / `show` / `gather` |
+| `GET` | `/v1/specs/{specKey}/versions/{version}/schemas/{name}` | `openstash schema` |
+| `GET` | `/v1/specs/{specKey}/timeline` | version history with per-step change counts |
+| `GET` | `/v1/specs/{specKey}/compare?from=&to=` | `openstash compare` (same key, definition-aware) |
+| `GET` | `/v1/specs/{specKey}/compare/definition` | raw operation/schema from both versions |
 
 `specKey` and `version` are path segments — use `gitea` and `1.0.0`, not the CLI-style `gitea@1.0.0`.
 
@@ -145,6 +152,40 @@ curl http://localhost:8080/v1/specs/gitea/versions
 # {"key":"gitea","versions":["1.0.0"]}
 ```
 
+### 7. Version history
+
+Every version stored under a key forms a timeline. Versions are ordered by semver when they parse:
+
+```bash
+curl http://localhost:8080/v1/specs/gitea/timeline
+# {"key":"gitea","versions":[{"version":"1.21.0","operations":412,...},...],
+#  "steps":[{"from":"1.21.0","to":"1.22.0","summary":{"operations":{"added":9,...},"schemas":{...}}}]}
+```
+
+Diff two versions:
+
+```bash
+curl 'http://localhost:8080/v1/specs/gitea/compare?from=1.21.0&to=1.22.0'
+```
+
+This is `openstash compare` plus definition-level detection: an operation whose `parameters`, `requestBody`, `responses`, `deprecated` or `security` differ is listed under `operations.changed` with an empty object for each differing field (for example `"changes":{"parameters":{}}`), and a schema whose definition differs gets `"definitionChanged":true`.
+
+Fetch both sides of one change to diff it yourself:
+
+```bash
+curl 'http://localhost:8080/v1/specs/gitea/compare/definition?from=1.21.0&to=1.22.0&method=GET&path=/user/repos'
+curl 'http://localhost:8080/v1/specs/gitea/compare/definition?from=1.21.0&to=1.22.0&schema=Repository'
+# {"baseline":{...}|null,"target":{...}|null,...}
+```
+
+### 8. One schema
+
+Equivalent to `openstash schema gitea@1.0.0 Repository --depth 1`:
+
+```bash
+curl 'http://localhost:8080/v1/specs/gitea/versions/1.0.0/schemas/Repository?depth=1'
+```
+
 ## From application code
 
 ### Python
@@ -183,7 +224,7 @@ const { hits } = await fetch(url).then((r) => r.json());
 
 These CLI commands have no HTTP equivalent yet:
 
-- `openstash compare`
+- `openstash compare` across different keys (same-key compare is `/v1/specs/{specKey}/compare`)
 - `openstash refresh`
 - `openstash curl`
 

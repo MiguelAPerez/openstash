@@ -1,6 +1,7 @@
 package store
 
 import (
+	"sort"
 	"strings"
 
 	"golang.org/x/mod/semver"
@@ -43,4 +44,13 @@ func semverTag(v string) string {
 		return ""
 	}
 	return semver.Canonical(candidate)
+}
+
+// SortVersions orders versions oldest to newest using the same rules as
+// LatestVersion: semver when both sides parse, semver before non-semver, and
+// lexical order otherwise.
+func SortVersions(versions []string) {
+	sort.SliceStable(versions, func(i, j int) bool {
+		return compareVersion(versions[i], versions[j]) < 0
+	})
 }

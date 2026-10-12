@@ -166,3 +166,14 @@ func TestCompareVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestSortVersions(t *testing.T) {
+	vers := []string{"1.10.0", "latest", "v1.2.0", "1.2.0-rc.1", "0.9.0"}
+	SortVersions(vers)
+	want := []string{"latest", "0.9.0", "1.2.0-rc.1", "v1.2.0", "1.10.0"}
+	for i := range want {
+		if vers[i] != want[i] {
+			t.Fatalf("SortVersions = %v, want %v", vers, want)
+		}
+	}
+}

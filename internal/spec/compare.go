@@ -1,8 +1,10 @@
 package spec
 
 import (
+	"reflect"
 	"slices"
 	"sort"
+	"strings"
 )
 
 // FieldChange records a single field difference between baseline and target.
@@ -46,6 +48,9 @@ type SchemaDiff struct {
 	Name          string   `json:"name"`
 	FieldsAdded   []string `json:"fieldsAdded,omitempty"`
 	FieldsRemoved []string `json:"fieldsRemoved,omitempty"`
+	// DefinitionChanged is set by CompareDetailed when the raw schema definition
+	// differs (types, formats, nested properties, ...), not just property names.
+	DefinitionChanged bool `json:"definitionChanged,omitempty"`
 }
 
 // CompareResult is the full diff between two OpenAPI documents.
@@ -253,4 +258,101 @@ func diffStringSets(baseline, target []string) (added, removed []string) {
 	sort.Strings(added)
 	sort.Strings(removed)
 	return added, removed
+}
+
+// definitionFields are the parts of an operation that Compare does not inspect
+// but CompareDetailed does.
+var definitionFields = []string{"parameters", "requestBody", "responses", "deprecated", "security"}
+
+// CompareDetailed is Compare plus definition-level change detection. Operations
+// present in both specs whose parameters, request body, responses, deprecation
+// or security differ are reported as changed, with an empty FieldChange under
+// each differing field name (the values are full sub-documents, so callers fetch
+// both sides when they need them). Schemas present in both specs whose raw
+// definitions differ get DefinitionChanged set.
+func CompareDetailed(baseline, target map[string]any) CompareResult {
+	res := Compare(baseline, target)
+
+	changedOps := make(map[string]int, len(res.Operations.Changed))
+	for i, c := range res.Operations.Changed {
+		changedOps[c.Method+" "+c.Path] = i
+	}
+	baselineOps := make(map[string]bool)
+	for _, op := range BuildIndex(baseline) {
+		baselineOps[operationKey(op)] = true
+	}
+	for _, op := range BuildIndex(target) {
+		key := operationKey(op)
+		if !baselineOps[key] {
+			continue
+		}
+		b := RawOperation(baseline, op.Path, op.Method)
+		t := RawOperation(target, op.Path, op.Method)
+		var fields []string
+		for _, f := range definitionFields {
+			if !reflect.DeepEqual(b[f], t[f]) {
+				fields = append(fields, f)
+			}
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		i, ok := changedOps[key]
+		if !ok {
+			res.Operations.Changed = append(res.Operations.Changed, OperationChange{
+				Method:  op.Method,
+				Path:    op.Path,
+				Changes: map[string]FieldChange{},
+			})
+			i = len(res.Operations.Changed) - 1
+			changedOps[key] = i
+		}
+		for _, f := range fields {
+			res.Operations.Changed[i].Changes[f] = FieldChange{}
+		}
+	}
+	sort.Slice(res.Operations.Changed, func(i, j int) bool {
+		a, b := res.Operations.Changed[i], res.Operations.Changed[j]
+		if a.Method != b.Method {
+			return a.Method < b.Method
+		}
+		return a.Path < b.Path
+	})
+
+	baselineSchemas, _ := schemasContainer(baseline)
+	targetSchemas, _ := schemasContainer(target)
+	changedSchemas := make(map[string]int, len(res.Schemas.Changed))
+	for i, c := range res.Schemas.Changed {
+		changedSchemas[c.Name] = i
+	}
+	for name, t := range targetSchemas {
+		b, ok := baselineSchemas[name]
+		if !ok || reflect.DeepEqual(b, t) {
+			continue
+		}
+		if i, ok := changedSchemas[name]; ok {
+			res.Schemas.Changed[i].DefinitionChanged = true
+			continue
+		}
+		res.Schemas.Changed = append(res.Schemas.Changed, SchemaDiff{Name: name, DefinitionChanged: true})
+	}
+	sort.Slice(res.Schemas.Changed, func(i, j int) bool {
+		return res.Schemas.Changed[i].Name < res.Schemas.Changed[j].Name
+	})
+
+	ops := &res.Summary.Operations
+	ops.Changed = len(res.Operations.Changed)
+	ops.Unchanged = res.Baseline.Operations - ops.Removed - ops.Changed
+	schemas := &res.Summary.Schemas
+	schemas.Changed = len(res.Schemas.Changed)
+	schemas.Unchanged = res.Baseline.Schemas - schemas.Removed - schemas.Changed
+	return res
+}
+
+// RawOperation returns the operation object at paths[path][method], or nil.
+func RawOperation(doc map[string]any, path, method string) map[string]any {
+	paths, _ := doc["paths"].(map[string]any)
+	item, _ := paths[path].(map[string]any)
+	op, _ := item[strings.ToLower(method)].(map[string]any)
+	return op
 }
