@@ -56,6 +56,8 @@ paths:
                 $ref: "#/components/schemas/AddSpecResponse"
         "409":
           $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
         "422":
           $ref: "#/components/responses/Unprocessable"
   /v1/specs/{specKey}:
@@ -479,6 +481,12 @@ components:
             $ref: "#/components/schemas/Error"
     Unprocessable:
       description: Invalid OpenAPI document
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnsupportedMediaType:
+      description: Request body is not declared as application/json
       content:
         application/json:
           schema:

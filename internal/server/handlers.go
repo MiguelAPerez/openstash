@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"sort"
 	"strconv"
@@ -82,7 +83,20 @@ type addSpecRequest struct {
 	Endpoint string `json:"endpoint"`
 }
 
+// isJSONContentType reports whether the request declares an application/json
+// body. Requiring it on writes blocks cross-site form posts: browsers only send
+// a cross-origin JSON POST after a CORS preflight, which this server never
+// approves, while text/plain and form bodies would go through unchecked.
+func isJSONContentType(r *http.Request) bool {
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	return err == nil && mt == "application/json"
+}
+
 func (s *Server) handleAddSpec(w http.ResponseWriter, r *http.Request) {
+	if !isJSONContentType(r) {
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, s.maxBodyBytes)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()

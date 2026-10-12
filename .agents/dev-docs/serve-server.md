@@ -116,6 +116,10 @@ Defense in depth that *is* enforced regardless of bind address:
   `internal/server/handlers.go`) to prevent traversal out of the store root.
 - `POST /v1/specs` caps the request body (default 64 KiB, override via
   `OPENSTASH_MAX_BODY_BYTES` or `--max-body-bytes`) and rejects unknown JSON fields.
+- `POST /v1/specs` returns 415 unless `Content-Type` is `application/json`
+  (`isJSONContentType`). That forces a CORS preflight for any cross-origin
+  browser request, and the server never answers one, so a page in the user's
+  browser can't drive a localhost instance (CSRF). Keep this if you add CORS.
 
 ## Decisions (OpenAPI 3.1 aligned)
 

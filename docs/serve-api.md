@@ -36,7 +36,7 @@ openstash serve --addr 127.0.0.1:8080
 | `OPENSTASH_MAX_BODY_BYTES` | `--max-body-bytes` | `65536` (64 KiB) | Max `POST /v1/specs` request body |
 | — | `--no-ui` | off | Serve the API only (no browser UI at `/`) |
 
-`POST /v1/specs` accepts a small JSON body (`key`, `from`, `version`, `endpoint`). The default 64 KiB cap is plenty when `from` is a URL or file path. Raise it only if you post large specs inline.
+`POST /v1/specs` accepts a small JSON body (`key`, `from`, `version`, `endpoint`) and requires `Content-Type: application/json` (anything else gets `415`). The default 64 KiB cap is plenty when `from` is a URL or file path. Raise it only if you post large specs inline.
 
 ## Quick check
 
@@ -234,3 +234,4 @@ The serve API has **no authentication**. It is meant for localhost or a trusted 
 
 - The CLI defaults to `127.0.0.1:8080`. Binding to `0.0.0.0` (as Docker does for port mapping) exposes the API to anyone who can reach the port.
 - `POST /v1/specs` fetches `from` URLs and reads local files on the server — do not expose an unauthenticated instance to untrusted networks.
+- `POST /v1/specs` only accepts `Content-Type: application/json`. Browsers send a cross-origin JSON request only after a CORS preflight, which the server never approves. So a web page you visit can't make a local `openstash serve` fetch URLs or read files for it.
