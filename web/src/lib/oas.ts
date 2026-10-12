@@ -41,13 +41,14 @@ export function buildReference(doc: JsonObject): ReferenceModel {
         groups.set(t.name, { name: t.name, description: str(t.description), operations: [] });
 
   const paths = isObject(doc.paths) ? doc.paths : {};
+  const params = (v: Json | undefined) => (Array.isArray(v) ? v.filter(isObject).map((p) => resolveLocal(doc, p)) : []);
   for (const [path, item] of Object.entries(paths)) {
     if (!isObject(item)) continue;
-    const shared = Array.isArray(item.parameters) ? item.parameters.filter(isObject) : [];
+    const shared = params(item.parameters);
     for (const m of METHODS) {
       const op = item[m];
       if (!isObject(op)) continue;
-      const own = Array.isArray(op.parameters) ? op.parameters.filter(isObject) : [];
+      const own = params(op.parameters);
       // Operation-level parameters override path-level ones with the same name+in.
       const ownKeys = new Set(own.map((p) => `${String(p.in)}:${String(p.name)}`));
       const parameters = [...shared.filter((p) => !ownKeys.has(`${String(p.in)}:${String(p.name)}`)), ...own];
@@ -60,8 +61,8 @@ export function buildReference(doc: JsonObject): ReferenceModel {
         description: str(op.description),
         tags,
         parameters: parameters.length ? parameters : undefined,
-        requestBody: isObject(op.requestBody) ? op.requestBody : undefined,
-        responses: isObject(op.responses) ? (op.responses as Record<string, JsonObject>) : undefined,
+        requestBody: isObject(op.requestBody) ? resolveLocal(doc, op.requestBody) : undefined,
+        responses: isObject(op.responses) ? resolveResponses(doc, op.responses) : undefined,
       };
       for (const tag of tags.length ? tags : [UNTAGGED]) {
         if (!groups.has(tag)) groups.set(tag, { name: tag, operations: [] });
@@ -87,6 +88,29 @@ export function buildReference(doc: JsonObject): ReferenceModel {
     groups: [...groups.values()].filter((g) => g.operations.length > 0),
     schemas,
   };
+}
+
+/**
+ * Follows a local $ref to a reusable parameter, response or request body
+ * ("#/components/responses/NotFound", Swagger 2 "#/parameters/limit"). Only
+ * applied to those objects, never to schemas: the views link schema refs.
+ */
+function resolveLocal(doc: JsonObject, v: JsonObject): JsonObject {
+  let cur = v;
+  for (let hops = 0; hops < 8 && typeof cur.$ref === "string" && cur.$ref.startsWith("#/"); hops++) {
+    let node: Json | undefined = doc;
+    for (const seg of cur.$ref.slice(2).split("/"))
+      node = isObject(node) ? node[seg.replace(/~1/g, "/").replace(/~0/g, "~")] : undefined;
+    if (!isObject(node)) break;
+    cur = node;
+  }
+  return cur;
+}
+
+function resolveResponses(doc: JsonObject, responses: JsonObject): Record<string, JsonObject> {
+  const out: Record<string, JsonObject> = {};
+  for (const [code, r] of Object.entries(responses)) if (isObject(r)) out[code] = resolveLocal(doc, r);
+  return out;
 }
 
 function servers(doc: JsonObject): string[] {

@@ -35,6 +35,52 @@ describe("buildReference", () => {
     expect(params.map((p) => `${p.name}:${p.description ?? ""}`)).toEqual(["trace:", "id:own"]);
   });
 
+  it("resolves local refs to reusable parameters, responses and request bodies", () => {
+    const m = buildReference({
+      openapi: "3.0.3",
+      components: {
+        parameters: { Id: { name: "id", in: "path", required: true, schema: { type: "string" } } },
+        responses: {
+          NotFound: { description: "Missing" },
+          Alias: { $ref: "#/components/responses/NotFound" },
+          Pet: { description: "A pet", content: { "application/json": { schema: { $ref: "#/components/schemas/Pet" } } } },
+        },
+        requestBodies: { PetBody: { required: true, content: {} } },
+      },
+      paths: {
+        "/pets/{id}": {
+          parameters: [{ $ref: "#/components/parameters/Id" }],
+          put: {
+            parameters: [{ name: "dryRun", in: "query" }],
+            requestBody: { $ref: "#/components/requestBodies/PetBody" },
+            responses: {
+              "200": { $ref: "#/components/responses/Pet" },
+              "404": { $ref: "#/components/responses/Alias" },
+              "500": { $ref: "other.yaml#/Error" },
+            },
+          },
+        },
+      },
+    });
+    const op = m.groups[0].operations[0];
+    expect(op.parameters!.map((p) => `${p.in}:${p.name}`)).toEqual(["path:id", "query:dryRun"]);
+    expect(op.requestBody!.required).toBe(true);
+    expect(op.responses!["404"].description).toBe("Missing");
+    // Schema refs inside a resolved response stay as refs for the views to link.
+    expect(JSON.stringify(op.responses!["200"])).toContain('"$ref":"#/components/schemas/Pet"');
+    // External refs are left alone.
+    expect(op.responses!["500"].$ref).toBe("other.yaml#/Error");
+  });
+
+  it("resolves Swagger 2 #/responses refs", () => {
+    const m = buildReference({
+      swagger: "2.0",
+      responses: { forbidden: { description: "Forbidden" } },
+      paths: { "/x": { delete: { responses: { "403": { $ref: "#/responses/forbidden" } } } } },
+    });
+    expect(m.groups[0].operations[0].responses!["403"].description).toBe("Forbidden");
+  });
+
   it("reads Swagger 2 servers and definitions", () => {
     const m = buildReference({
       swagger: "2.0",

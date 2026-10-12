@@ -33,7 +33,7 @@ export function Sidebar({ route, open, onNavigate }: { route: Route; open: boole
       {!loading && !error && groups.length === 0 && <div className="sidebar-empty">No specs stored yet.</div>}
       <ul className="spec-list" onClick={(e) => (e.target as HTMLElement).closest("a") && onNavigate()}>
         {shown.map((g) => (
-          <li className="spec-item" key={g.key}>
+          <li className={`spec-item ${currentKey === g.key ? "current" : ""}`} key={g.key}>
             <a
               className="spec-link"
               href={href.explore(g.key, g.latest.version)}
@@ -47,6 +47,7 @@ export function Sidebar({ route, open, onNavigate }: { route: Route; open: boole
                   key={v.version}
                   className="chip"
                   href={href.explore(g.key, v.version)}
+                  title={v.version}
                   aria-current={currentKey === g.key && currentVersion === v.version ? "page" : undefined}
                 >
                   {v.version}
