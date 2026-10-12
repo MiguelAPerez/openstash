@@ -20,9 +20,20 @@ type Server struct {
 	maxBodyBytes int64
 }
 
+// Options configures optional server features.
+type Options struct {
+	// DisableUI turns off the browser UI served at "/".
+	DisableUI bool
+}
+
 // New builds an HTTP server listening on addr. A maxBodyBytes <= 0 falls back to
 // DefaultMaxBodyBytes.
 func New(st *store.Store, addr string, maxBodyBytes int64) *Server {
+	return NewWithOptions(st, addr, maxBodyBytes, Options{})
+}
+
+// NewWithOptions is New with optional features configured.
+func NewWithOptions(st *store.Store, addr string, maxBodyBytes int64, opts Options) *Server {
 	if maxBodyBytes <= 0 {
 		maxBodyBytes = DefaultMaxBodyBytes
 	}
@@ -35,6 +46,13 @@ func New(st *store.Store, addr string, maxBodyBytes int64) *Server {
 	mux.HandleFunc("GET /v1/specs/{specKey}/versions", s.handleListVersions)
 	mux.HandleFunc("GET /v1/specs/{specKey}/versions/{version}", s.handleDumpVersion)
 	mux.HandleFunc("GET /v1/specs/{specKey}/versions/{version}/operations", s.handleOperations)
+	mux.HandleFunc("GET /v1/specs/{specKey}/versions/{version}/schemas/{name}", s.handleSchema)
+	mux.HandleFunc("GET /v1/specs/{specKey}/timeline", s.handleTimeline)
+	mux.HandleFunc("GET /v1/specs/{specKey}/compare", s.handleCompare)
+	mux.HandleFunc("GET /v1/specs/{specKey}/compare/definition", s.handleCompareDefinition)
+	if !opts.DisableUI {
+		s.registerUI(mux)
+	}
 	s.http = &http.Server{
 		Addr:              addr,
 		Handler:           mux,

@@ -52,7 +52,7 @@ docker pull ghcr.io/miguelaperez/openstash:latest
 docker run -p 8080:8080 -v ~/.openstash:/data ghcr.io/miguelaperez/openstash:latest
 ```
 
-The image runs `openstash serve` with the store at `/data`. Mount your local cache or an empty directory.
+The image runs `openstash serve` with the store at `/data`. Mount your local cache or an empty directory. Open http://localhost:8080/ for the [web UI](#web-ui).
 
 **Using the API:** [docs/serve-api.md](docs/serve-api.md) — curl examples, endpoint reference, and client code snippets.
 
@@ -149,6 +149,20 @@ Re-fetches the source and reports whether `info.version` changed (does not overw
 ```bash
 openstash refresh gitea
 ```
+
+## Web UI
+
+`openstash serve` also serves a browser UI at the server root:
+
+```bash
+openstash serve            # then open http://127.0.0.1:8080/
+```
+
+- **Explore** — search endpoints and schemas, inspect one operation with `$ref`s inlined.
+- **Reference** — the full API reference for any stored version (rendered with [Scalar](https://github.com/scalar/scalar)).
+- **Timeline** — every stored version of a key in order, with change counts between each step. Pick a step and walk through each added, removed, or changed endpoint and schema as a line diff (`j`/`k` for changes, `[`/`]` for steps).
+
+Store a new version of a spec under the same key (`openstash add gitea --from … --version 1.22.0`) to grow its timeline. Pass `--no-ui` to serve the API only.
 
 ## Storage
 

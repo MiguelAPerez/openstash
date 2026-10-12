@@ -91,7 +91,9 @@ Publishing the image on release alongside the tar.gz binaries is wired up in `re
 
 - Auth / TLS — local dev only; bind to localhost or trusted network.
 - MCP or gRPC — HTTP first; same handlers can back MCP later.
-- Static UI or nginx — the value is the Go store/search API.
+- Static UI or nginx — the value is the Go store/search API. (Superseded: a React UI
+  built from `web/` is now embedded in the binary and served at `/`; see
+  `internal/server/ui.go`. Still no nginx — the Go server serves it.)
 - New dependencies — stdlib HTTP is enough unless routing grows unwieldy.
 
 ## Trust model

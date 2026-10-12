@@ -1,0 +1,4 @@
+/* Scalar offers "Generate SDK" whenever the page is on localhost; it uploads the
+   document to Scalar's cloud, which doesn't fit a local cache, so hide it. */
+.generate-sdk-button,
+.selected-client-row > .scalar-button { display: none !important; }
