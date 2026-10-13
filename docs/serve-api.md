@@ -2,7 +2,7 @@
 
 openstash can run as a long-lived HTTP server (`openstash serve`) so agents and tools can query cached OpenAPI specs without shelling out to the CLI. Responses mirror the JSON the CLI prints.
 
-The same server hosts a browser UI at `/` (explore, API reference, version timeline with diffs). Disable it with `--no-ui`.
+The same server hosts the [web UI](web-ui.md) at `/` (explore, API reference, version timeline with diffs). Disable it with `--no-ui`.
 
 **Base URL:** `http://localhost:8080` (default when running locally or via Docker on port 8080)
 
