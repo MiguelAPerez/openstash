@@ -35,14 +35,6 @@ export function Explore({ route }: { route: ExploreRoute }) {
     navigate(href.explore(key, version, next), replace);
   };
 
-  // Reset inputs when switching specs/versions.
-  useEffect(() => {
-    setText(q);
-    setPrefixText(prefix);
-    setLimit(PAGE);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, version]);
-
   useEffect(() => {
     if (debouncedText !== q || debouncedPrefix !== prefix) update({ q: debouncedText, prefix: debouncedPrefix });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -76,9 +68,11 @@ export function Explore({ route }: { route: ExploreRoute }) {
   const selectOp = (id: string) => update({ op: id, schema: undefined }, false);
   const selectSchema = (name: string) => update({ schema: name, op: undefined }, false);
 
-  // Keyboard: "/" focuses search, ↑/↓ move through operation results.
+  // Keyboard: "/" focuses search; ↑/↓ move through operation results while
+  // focus is in the search box or the result list (elsewhere they scroll).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement;
       const typing = target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA";
       if (e.key === "/" && !typing) {
@@ -86,7 +80,8 @@ export function Explore({ route }: { route: ExploreRoute }) {
         searchRef.current?.focus();
         return;
       }
-      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && (!typing || target === searchRef.current) && scope === "paths") {
+      const inList = target === searchRef.current || !!target.closest?.(".results");
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && inList && scope === "paths") {
         if (opIds.length === 0) return;
         e.preventDefault();
         const i = opIds.indexOf(op);

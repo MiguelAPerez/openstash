@@ -8,32 +8,11 @@ export interface SpecGroup {
   latest: SpecEntry;
 }
 
-const semverRe = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
-
 /**
- * Orders versions like the server (internal/store/version.go): semver when
- * both parse, semver sorts after non-semver, lexical otherwise.
+ * Groups entries by key. GET /v1/specs lists each key's versions oldest to
+ * newest in the server's version order (the one the timeline and "latest" in
+ * the API use), so that order is kept rather than re-derived here.
  */
-export function compareVersions(a: string, b: string): number {
-  const ma = semverRe.exec(a.trim());
-  const mb = semverRe.exec(b.trim());
-  if (ma && mb) {
-    for (let i = 1; i <= 3; i++) {
-      const d = Number(ma[i]) - Number(mb[i]);
-      if (d !== 0) return Math.sign(d);
-    }
-    const pa = ma[4];
-    const pb = mb[4];
-    if (pa === pb) return 0;
-    if (pa === undefined) return 1; // release > prerelease
-    if (pb === undefined) return -1;
-    return pa < pb ? -1 : 1;
-  }
-  if (ma) return 1;
-  if (mb) return -1;
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
 export function groupSpecs(entries: SpecEntry[]): SpecGroup[] {
   const byKey = new Map<string, SpecEntry[]>();
   for (const e of entries) {
@@ -42,10 +21,7 @@ export function groupSpecs(entries: SpecEntry[]): SpecGroup[] {
     byKey.set(e.key, list);
   }
   return [...byKey.entries()]
-    .map(([key, versions]) => {
-      versions.sort((a, b) => compareVersions(a.version, b.version));
-      return { key, versions, latest: versions[versions.length - 1] };
-    })
+    .map(([key, versions]) => ({ key, versions, latest: versions[versions.length - 1] }))
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 

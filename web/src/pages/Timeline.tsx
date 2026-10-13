@@ -4,7 +4,7 @@ import { Method } from "../components/Method";
 import { SpecHeader } from "../components/SpecHeader";
 import { api, type CompareCounts, type Timeline as TimelineData, type TimelineStep } from "../lib/api";
 import { changeItems, type ChangeItem, type ChangeKind } from "../lib/changes";
-import { stableStringify } from "../lib/diff";
+import { computeDiff, stableStringify } from "../lib/diff";
 import { href, navigate, type Route } from "../lib/route";
 import { formatDate, useSpecs } from "../lib/specs";
 import { useAsync } from "../lib/useAsync";
@@ -24,10 +24,20 @@ export function Timeline({ route }: { route: TimelineRoute }) {
   const data = timeline.data;
 
   const steps = data?.steps ?? [];
-  // Selected pair: explicit from/to, else the newest step.
+  // Selected pair: explicit from/to, else the newest step. A lone `to` (or
+  // `from`) picks the step ending (or starting) at that version, which is how
+  // the add dialog links to a version it just stored.
   const newest = steps[steps.length - 1];
-  const from = query.get("from") ?? newest?.from ?? "";
-  const to = query.get("to") ?? newest?.to ?? "";
+  const qFrom = query.get("from");
+  const qTo = query.get("to");
+  const around =
+    qFrom === null && qTo !== null
+      ? (steps.find((s) => s.to === qTo) ?? steps.find((s) => s.from === qTo))
+      : qTo === null && qFrom !== null
+        ? (steps.find((s) => s.from === qFrom) ?? steps.find((s) => s.to === qFrom))
+        : undefined;
+  const from = (around ? around.from : qFrom) ?? newest?.from ?? "";
+  const to = (around ? around.to : qTo) ?? newest?.to ?? "";
   const itemId = query.get("item") ?? "";
   const kindFilter = (query.get("show") ?? "all") as "all" | "operations" | "schemas";
   const stepIndex = steps.findIndex((s) => s.from === from && s.to === to);
@@ -64,18 +74,27 @@ export function Timeline({ route }: { route: TimelineRoute }) {
     const i = Math.min(items.length - 1, Math.max(0, (itemIndex < 0 ? 0 : itemIndex) + delta));
     go({ item: items[i].id }, true);
   };
+  // Older/Newer step from the current one. From a custom range they snap to
+  // the single steps around the range's newer end.
+  const stepTarget = (delta: number): TimelineStep | undefined => {
+    if (stepIndex >= 0) return steps[stepIndex + delta];
+    const end = steps.findIndex((s) => s.to === to);
+    if (end >= 0) return steps[delta < 0 ? end : end + 1];
+    return delta > 0 ? steps.find((s) => s.from === to) : undefined;
+  };
   const moveStep = (delta: number) => {
-    const i = (stepIndex < 0 ? steps.length - 1 : stepIndex) + delta;
-    if (i >= 0 && i < steps.length) selectStep(steps[i]);
+    const s = stepTarget(delta);
+    if (s) selectStep(s);
   };
 
-  // Keyboard: j/k (or ↓/↑) through changes, [ / ] through steps.
+  // Keyboard: j/k through changes, [ / ] through steps. Arrow keys are left to
+  // scroll the page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "j" || e.key === "ArrowDown") moveItem(1);
-      else if (e.key === "k" || e.key === "ArrowUp") moveItem(-1);
+      if (e.key === "j") moveItem(1);
+      else if (e.key === "k") moveItem(-1);
       else if (e.key === "]") moveStep(1);
       else if (e.key === "[") moveStep(-1);
       else return;
@@ -120,7 +139,7 @@ export function Timeline({ route }: { route: TimelineRoute }) {
           <Rail data={data} from={from} to={to} onStep={selectStep} />
 
           <div className="step-bar">
-            <button type="button" className="btn btn-small" onClick={() => moveStep(-1)} disabled={stepIndex === 0}>
+            <button type="button" className="btn btn-small" onClick={() => moveStep(-1)} disabled={!stepTarget(-1)}>
               ← Older
             </button>
             <div className="step-title">
@@ -139,7 +158,7 @@ export function Timeline({ route }: { route: TimelineRoute }) {
               type="button"
               className="btn btn-small"
               onClick={() => moveStep(1)}
-              disabled={stepIndex === steps.length - 1}
+              disabled={!stepTarget(1)}
             >
               Newer →
             </button>
@@ -345,18 +364,20 @@ function ChangeList({
     ref.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
   }, [currentId]);
 
+  const counts = new Map<string, number>();
+  for (const it of items) counts.set(changeGroup(it), (counts.get(changeGroup(it)) ?? 0) + 1);
   let lastGroup = "";
   return (
     <ul className="results changes" ref={ref}>
       {items.map((it) => {
-        const group = `${it.type === "operation" ? "Endpoints" : "Schemas"} ${it.kind}`;
+        const group = changeGroup(it);
         const header = group !== lastGroup;
         lastGroup = group;
         return (
           <li key={it.id}>
             {header && (
               <div className={`change-group kind-${it.kind}`}>
-                {group} <span className="muted">({items.filter((x) => `${x.type === "operation" ? "Endpoints" : "Schemas"} ${x.kind}` === group).length})</span>
+                {group} <span className="muted">({counts.get(group)})</span>
               </div>
             )}
             <button
@@ -389,6 +410,10 @@ function ChangeList({
       })}
     </ul>
   );
+}
+
+function changeGroup(it: ChangeItem): string {
+  return `${it.type === "operation" ? "Endpoints" : "Schemas"} ${it.kind}${it.extensionsOnly ? " · x-* only" : ""}`;
 }
 
 function ChangeDiff({
@@ -437,8 +462,11 @@ function ChangeDiff({
       ),
     [specKey, from, to, item.id],
   );
-  const oldText = def.data ? stableStringify(def.data.baseline) : "";
-  const newText = def.data ? stableStringify(def.data.target) : "";
+  // Stringify and diff once per definition, shared by the stats and the view.
+  const diff = useMemo(
+    () => (def.data ? computeDiff(stableStringify(def.data.baseline), stableStringify(def.data.target)) : null),
+    [def.data],
+  );
   const exploreVersion = item.kind === "removed" ? from : to;
   const exploreLink =
     item.type === "operation"
@@ -472,10 +500,11 @@ function ChangeDiff({
           {item.kind === "changed" && (
             <>
               Changed: {item.notes.join(", ")}
+              {item.extensionsOnly && " (vendor extensions only)"}
             </>
           )}
         </span>
-        {def.data && <DiffStats oldText={oldText} newText={newText} />}
+        {diff && <DiffStats diff={diff} />}
         <span className="spacer" />
         <div className="segmented" role="group" aria-label="Diff layout">
           <button type="button" aria-pressed={mode === "unified"} onClick={() => setModeSaved("unified")}>
@@ -497,7 +526,7 @@ function ChangeDiff({
       )}
       {def.status === "loading" && <div className="skeleton">Loading definitions…</div>}
       {def.status === "error" && <p className="notice">{def.error.message}</p>}
-      {def.status === "ok" && <DiffView oldText={oldText} newText={newText} mode={mode} />}
+      {def.status === "ok" && diff && <DiffView diff={diff} mode={mode} />}
       <p className="hint muted small">
         <span className="kbd">j</span>/<span className="kbd">k</span> next/previous change ·{" "}
         <span className="kbd">[</span>/<span className="kbd">]</span> older/newer step

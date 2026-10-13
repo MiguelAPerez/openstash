@@ -14,6 +14,8 @@ export interface ChangeItem {
   summary?: string;
   /** Field names that changed (operations) or property-level notes (schemas). */
   notes: string[];
+  /** Only x-* vendor extensions differ (e.g. generator metadata). */
+  extensionsOnly?: boolean;
 }
 
 const kindOrder: ChangeKind[] = ["changed", "added", "removed"];
@@ -33,14 +35,23 @@ export function changeItems(c: CompareResult): ChangeItem[] {
           method: o.method,
           path: o.path,
           notes: Object.keys(o.changes).sort(),
+          extensionsOnly: o.extensionsOnly,
         });
       for (const s of c.schemas.changed ?? []) {
         const notes = [
           ...(s.fieldsAdded ?? []).map((f) => `+${f}`),
           ...(s.fieldsRemoved ?? []).map((f) => `−${f}`),
         ];
-        if (s.definitionChanged && notes.length === 0) notes.push("definition");
-        schemas.push({ id: `schema:${s.name}`, kind, type: "schema", label: s.name, schema: s.name, notes });
+        if (s.definitionChanged && notes.length === 0) notes.push(s.extensionsOnly ? "x-*" : "definition");
+        schemas.push({
+          id: `schema:${s.name}`,
+          kind,
+          type: "schema",
+          label: s.name,
+          schema: s.name,
+          notes,
+          extensionsOnly: s.extensionsOnly,
+        });
       }
     } else {
       for (const o of c.operations[kind] ?? [])
@@ -58,7 +69,13 @@ export function changeItems(c: CompareResult): ChangeItem[] {
         schemas.push({ id: `schema:${name}`, kind, type: "schema", label: name, schema: name, notes: [] });
     }
   }
-  return [...ops, ...schemas];
+  // Extension-only changes are mostly generator noise: list them after the
+  // real changes of their kind (sort is stable, so server order holds within).
+  const noiseLast = (list: ChangeItem[]) =>
+    list.sort((a, b) =>
+      a.kind === b.kind ? Number(!!a.extensionsOnly) - Number(!!b.extensionsOnly) : kindOrder.indexOf(a.kind) - kindOrder.indexOf(b.kind),
+    );
+  return [...noiseLast(ops), ...noiseLast(schemas)];
 }
 
 export function totalChanges(s: CompareResult["summary"]): number {

@@ -533,6 +533,7 @@ details.raw > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   color: var(--muted);
 }
 .nav-list { list-style: none; margin: 0; padding: 0; }
+.nav-more { margin: 6px 10px 0; }
 .nav-ops { margin: 2px 0 6px 8px; padding-left: 6px; border-left: 1px solid var(--border); }
 .nav-link {
   display: flex;

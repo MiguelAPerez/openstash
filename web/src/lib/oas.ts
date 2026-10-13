@@ -73,7 +73,9 @@ export function buildReference(doc: JsonObject): ReferenceModel {
 
   const components = isObject(doc.components) ? doc.components : {};
   const schemaSource = isObject(components.schemas) ? components.schemas : isObject(doc.definitions) ? doc.definitions : {};
-  const schemas: Record<string, JsonObject> = {};
+  // No prototype: names come from the spec, so "constructor" or "__proto__"
+  // must behave like any other model name.
+  const schemas: Record<string, JsonObject> = Object.create(null);
   for (const name of Object.keys(schemaSource).sort()) {
     const s = schemaSource[name];
     if (isObject(s)) schemas[name] = s;
@@ -123,6 +125,7 @@ function servers(doc: JsonObject): string[] {
   return [];
 }
 
+/** Element id for an operation; method + path is unique, so the id is too. */
 export function operationAnchor(op: { method: string; path: string }): string {
-  return `op-${op.method.toLowerCase()}-${op.path.replace(/[^A-Za-z0-9]+/g, "-")}`;
+  return `op-${op.method.toLowerCase()}-${op.path.replace(/\s/g, "%20")}`;
 }

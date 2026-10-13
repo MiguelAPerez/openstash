@@ -10,7 +10,8 @@ export function stableStringify(value: Json | undefined): string {
 function sortKeys(value: Json): Json {
   if (Array.isArray(value)) return value.map(sortKeys);
   if (value && typeof value === "object") {
-    const out: { [k: string]: Json } = {};
+    // No prototype, so a spec key like "__proto__" stays an ordinary key.
+    const out: { [k: string]: Json } = Object.create(null);
     for (const k of Object.keys(value).sort()) out[k] = sortKeys(value[k]);
     return out;
   }
@@ -29,13 +30,34 @@ export interface DiffLine {
 
 export type DiffRow = { type: "line"; line: DiffLine } | { type: "gap"; hidden: DiffLine[] };
 
+export interface LineDiffResult {
+  lines: DiffLine[];
+  /** The diff hit its time budget, so every old line is shown removed and every new line added. */
+  approximate: boolean;
+}
+
+/** Diff budget: jsdiff is quadratic in the worst case, and it runs on the main thread. */
+const DIFF_TIMEOUT_MS = 500;
+
 export function lineDiff(oldText: string, newText: string): DiffLine[] {
+  return computeDiff(oldText, newText).lines;
+}
+
+export function computeDiff(oldText: string, newText: string, timeout = DIFF_TIMEOUT_MS): LineDiffResult {
   const out: DiffLine[] = [];
   let oldNo = 1;
   let newNo = 1;
   // Terminate both sides so the last line compares equal regardless of a trailing newline.
   const term = (t: string) => (t === "" || t.endsWith("\n") ? t : t + "\n");
-  for (const part of diffLines(term(oldText), term(newText))) {
+  const a = term(oldText);
+  const b = term(newText);
+  const result = diffLines(a, b, { timeout });
+  const approximate = result === undefined;
+  const parts = result ?? [
+    { value: a, removed: true, added: false },
+    { value: b, removed: false, added: true },
+  ];
+  for (const part of parts) {
     const lines = part.value.replace(/\n$/, "").split("\n");
     if (part.value === "") continue;
     for (const text of lines) {
@@ -44,7 +66,7 @@ export function lineDiff(oldText: string, newText: string): DiffLine[] {
       else out.push({ kind: "same", text, oldNo: oldNo++, newNo: newNo++ });
     }
   }
-  return out;
+  return { lines: out, approximate };
 }
 
 /**

@@ -77,6 +77,7 @@ function ReferenceNav({
   const opMatches = (o: { method: string; path: string; summary?: string; operationId?: string }) =>
     !f || [o.method, o.path, o.summary ?? "", o.operationId ?? ""].some((s) => s.toLowerCase().includes(f));
   const schemaNames = Object.keys(model.schemas).filter((n) => !f || n.toLowerCase().includes(f));
+  const modelCap = f ? 200 : 500;
 
   return (
     <nav className="reference-nav" aria-label="Reference contents">
@@ -130,7 +131,7 @@ function ReferenceNav({
         <>
           <div className="nav-heading">Models</div>
           <ul className="nav-list">
-            {schemaNames.slice(0, f ? 200 : 500).map((n) => (
+            {schemaNames.slice(0, modelCap).map((n) => (
               <li key={n}>
                 <a className="nav-link mono" href={link({ schema: n })} aria-current={n === schema ? "page" : undefined}>
                   {n}
@@ -138,6 +139,11 @@ function ReferenceNav({
               </li>
             ))}
           </ul>
+          {schemaNames.length > modelCap && (
+            <p className="nav-more muted small">
+              {schemaNames.length - modelCap} more. Filter to find them.
+            </p>
+          )}
         </>
       )}
     </nav>

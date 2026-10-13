@@ -28,4 +28,26 @@ describe("changeItems", () => {
     expect(items[0].notes).toEqual(["responses", "summary"]);
     expect(items[2].notes).toEqual(["+tag"]);
   });
+
+  it("lists extension-only changes after real ones of the same kind", () => {
+    const c: CompareResult = {
+      baseline: { key: "k", version: "1", operations: 0, schemas: 0 },
+      target: { key: "k", version: "2", operations: 0, schemas: 0 },
+      summary: { operations: counts, schemas: counts },
+      operations: { added: [], removed: [], changed: [] },
+      schemas: {
+        added: ["New"],
+        removed: [],
+        changed: [
+          { name: "A", definitionChanged: true, extensionsOnly: true },
+          { name: "B", definitionChanged: true },
+          { name: "C", fieldsAdded: ["x"] },
+        ],
+      },
+    };
+    const items = changeItems(c);
+    expect(items.map((i) => i.id)).toEqual(["schema:B", "schema:C", "schema:A", "schema:New"]);
+    expect(items[2].notes).toEqual(["x-*"]);
+    expect(items[2].extensionsOnly).toBe(true);
+  });
 });

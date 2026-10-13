@@ -20,10 +20,13 @@ interface Props {
 
 /** Human-readable rendering of one operation from the `show` endpoint. */
 export function OperationView({ op, onRef, showRaw = true, id }: Props) {
-  const params = (op.parameters ?? []).filter(isObject);
+  const params = (Array.isArray(op.parameters) ? op.parameters : []).filter(isObject);
   const bodyParams = params.filter((p) => p.in === "body");
   const otherParams = params.filter((p) => p.in !== "body");
-  const responses = Object.entries(op.responses ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  // Untrusted input: a response can be null or a scalar (YAML `'204':` with nothing after it).
+  const responses = Object.entries(isObject(op.responses) ? op.responses : {})
+    .map(([code, r]): [string, JsonObject] => [code, isObject(r) ? r : {}])
+    .sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <article className="operation" id={id}>
@@ -38,7 +41,7 @@ export function OperationView({ op, onRef, showRaw = true, id }: Props) {
             operationId <strong className="mono">{op.operationId}</strong>
           </span>
         )}
-        {op.tags?.map((t) => (
+        {(Array.isArray(op.tags) ? op.tags : []).map((t) => (
           <span key={t} className="tag">
             {t}
           </span>
@@ -87,14 +90,14 @@ export function OperationView({ op, onRef, showRaw = true, id }: Props) {
         <section className="section">
           <h3>
             Request body
-            {(op.requestBody?.required === true || bodyParams.some((p) => p.required === true)) && (
+            {((isObject(op.requestBody) && op.requestBody.required === true) || bodyParams.some((p) => p.required === true)) && (
               <span className="req">required</span>
             )}
           </h3>
-          {typeof op.requestBody?.description === "string" && (
+          {isObject(op.requestBody) && typeof op.requestBody.description === "string" && (
             <p className="detail-desc">{op.requestBody.description}</p>
           )}
-          {isObject(op.requestBody?.content) &&
+          {isObject(op.requestBody) && isObject(op.requestBody.content) &&
             Object.entries(op.requestBody.content).map(([ct, media]) => (
               <div key={ct}>
                 <div className="content-type">{ct}</div>

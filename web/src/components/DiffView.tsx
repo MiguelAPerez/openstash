@@ -1,17 +1,17 @@
 import { Fragment, useMemo, useState } from "react";
-import { collapse, diffStats, lineDiff, type DiffLine, type DiffRow } from "../lib/diff";
+import { collapse, diffStats, type DiffLine, type DiffRow, type LineDiffResult } from "../lib/diff";
 
 export type DiffMode = "unified" | "split";
 
 interface Props {
-  oldText: string;
-  newText: string;
+  /** From computeDiff; computed once by the caller and shared with DiffStats. */
+  diff: LineDiffResult;
   mode: DiffMode;
   context?: number;
 }
 
-export function DiffView({ oldText, newText, mode, context = 3 }: Props) {
-  const lines = useMemo(() => lineDiff(oldText, newText), [oldText, newText]);
+export function DiffView({ diff, mode, context = 3 }: Props) {
+  const { lines, approximate } = diff;
   const rows = useMemo(() => collapse(lines, context), [lines, context]);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -42,6 +42,9 @@ export function DiffView({ oldText, newText, mode, context = 3 }: Props) {
 
   return (
     <div className="diff-scroll">
+      {approximate && (
+        <p className="notice small">This definition is too large to align line by line, so the whole of each side is shown.</p>
+      )}
       <table className={`diff diff-${mode}`}>
         <tbody>
           {mode === "unified" ? <UnifiedRows rows={visible} onExpand={expand} /> : <SplitRows rows={visible} onExpand={expand} />}
@@ -132,8 +135,8 @@ function SplitRows({ rows, onExpand }: { rows: DiffRow[]; onExpand: (r: DiffRow)
   );
 }
 
-export function DiffStats({ oldText, newText }: { oldText: string; newText: string }) {
-  const { added, removed } = useMemo(() => diffStats(lineDiff(oldText, newText)), [oldText, newText]);
+export function DiffStats({ diff }: { diff: LineDiffResult }) {
+  const { added, removed } = useMemo(() => diffStats(diff.lines), [diff]);
   return (
     <span className="diff-stats">
       <span className="plus">+{added}</span> <span className="minus">−{removed}</span>

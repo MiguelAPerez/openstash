@@ -94,6 +94,7 @@ export interface OperationChange {
   method: string;
   path: string;
   changes: Record<string, FieldChange>;
+  extensionsOnly?: boolean;
 }
 
 export interface SchemaDiff {
@@ -101,6 +102,7 @@ export interface SchemaDiff {
   fieldsAdded?: string[];
   fieldsRemoved?: string[];
   definitionChanged?: boolean;
+  extensionsOnly?: boolean;
 }
 
 export interface CompareResult {

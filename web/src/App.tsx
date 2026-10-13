@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddSpecDialog } from "./components/AddSpecDialog";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Sidebar } from "./components/Sidebar";
 import { api } from "./lib/api";
 import { href, useRoute } from "./lib/route";
@@ -44,6 +45,13 @@ export function App() {
     [specs, reload, openAdd],
   );
 
+  const pageKey =
+    route.name === "explore" || route.name === "reference"
+      ? `${route.name}:${route.key}@${route.version}`
+      : route.name === "timeline"
+        ? `timeline:${route.key}`
+        : route.name;
+
   const currentRef =
     route.name === "explore" || route.name === "reference"
       ? `${route.key}@${route.version}`
@@ -85,15 +93,18 @@ export function App() {
       <div className="layout">
         <Sidebar route={route} open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />
         <main className="main">
-          {route.name === "home" && <Home />}
-          {route.name === "explore" && <Explore route={route} />}
-          {route.name === "reference" && <Reference route={route} />}
-          {route.name === "timeline" && <Timeline route={route} />}
-          {route.name === "notFound" && (
-            <div className="empty">
-              Page not found. <a href={href.home()}>Back to all specs</a>
-            </div>
-          )}
+          <ErrorBoundary resetKey={window.location.hash}>
+            {route.name === "home" && <Home />}
+            {/* Keyed per spec/version so results and inputs never carry over from another spec. */}
+            {route.name === "explore" && <Explore key={pageKey} route={route} />}
+            {route.name === "reference" && <Reference key={pageKey} route={route} />}
+            {route.name === "timeline" && <Timeline key={pageKey} route={route} />}
+            {route.name === "notFound" && (
+              <div className="empty">
+                Page not found. <a href={href.home()}>Back to all specs</a>
+              </div>
+            )}
+          </ErrorBoundary>
         </main>
       </div>
 

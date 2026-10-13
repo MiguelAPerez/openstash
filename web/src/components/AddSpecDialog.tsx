@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api } from "../lib/api";
 import { href, navigate } from "../lib/route";
+import { useSpecs } from "../lib/specs";
 
 interface Props {
   open: boolean;
@@ -13,6 +14,7 @@ export function AddSpecDialog({ open, prefillKey, onClose, onAdded }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { groups } = useSpecs();
 
   useEffect(() => {
     const d = ref.current;
@@ -39,7 +41,11 @@ export function AddSpecDialog({ open, prefillKey, onClose, onAdded }: Props) {
       onAdded(`Added ${res.meta.key}@${res.meta.version}: ${res.indexed} operations, ${res.schemas} schemas`);
       (e.target as HTMLFormElement).reset();
       onClose();
-      navigate(href.explore(res.meta.key, res.meta.version));
+      // A new version of a key already stored extends its timeline: show what changed.
+      const existing = groups.some((g) => g.key === res.meta.key);
+      navigate(
+        existing ? href.timeline(res.meta.key, { to: res.meta.version }) : href.explore(res.meta.key, res.meta.version),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

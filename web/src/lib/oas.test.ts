@@ -94,4 +94,11 @@ describe("buildReference", () => {
     expect(Object.keys(m.schemas)).toEqual(["A", "B"]);
     expect(m.format).toBe("Swagger 2.0");
   });
+
+  it("treats Object.prototype names as ordinary model names", () => {
+    const m = buildReference(JSON.parse('{"definitions":{"__proto__":{"type":"object"},"Pet":{"type":"object"}},"paths":{}}'));
+    expect(Object.keys(m.schemas)).toEqual(["Pet", "__proto__"]);
+    expect(m.schemas["constructor"]).toBeUndefined();
+    expect(m.schemas["toString"]).toBeUndefined();
+  });
 });
