@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/MiguelAPerez/openstash/internal/server"
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ func newServe() *cobra.Command {
 	var addr string
 	var maxBodyBytes int64
 	var noUI bool
+	var allowedHosts []string
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -29,7 +31,10 @@ func newServe() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			srv := server.NewWithOptions(st, addr, limit, server.Options{DisableUI: noUI})
+			if !cmd.Flags().Changed("allowed-hosts") {
+				allowedHosts = splitList(os.Getenv("OPENSTASH_ALLOWED_HOSTS"))
+			}
+			srv := server.NewWithOptions(st, addr, limit, server.Options{DisableUI: noUI, AllowedHosts: allowedHosts})
 			fmt.Fprintf(os.Stderr, "openstash serve listening on %s\n", addr)
 			if !noUI {
 				fmt.Fprintf(os.Stderr, "web UI: %s\n", uiURL(addr))
@@ -42,7 +47,21 @@ func newServe() *cobra.Command {
 	cmd.Flags().Int64Var(&maxBodyBytes, "max-body-bytes", 0,
 		"max POST /v1/specs request body in bytes (0 = OPENSTASH_MAX_BODY_BYTES or built-in default)")
 	cmd.Flags().BoolVar(&noUI, "no-ui", false, "disable the browser UI served at /")
+	cmd.Flags().StringSliceVar(&allowedHosts, "allowed-hosts", nil,
+		"extra Host names to accept besides localhost and IPs, or * for any "+
+			"(default: OPENSTASH_ALLOWED_HOSTS; any host when bound to a wildcard address)")
 	return cmd
+}
+
+// splitList parses a comma-separated env value, dropping empty items.
+func splitList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // uiURL turns a listen address into a clickable URL for the startup log.

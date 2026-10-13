@@ -24,6 +24,10 @@ type Server struct {
 type Options struct {
 	// DisableUI turns off the browser UI served at "/".
 	DisableUI bool
+	// AllowedHosts adds Host header names the server answers to, besides
+	// localhost, *.localhost, IP literals and the bind host; "*" allows any.
+	// See hostPolicy for how wildcard binds are treated.
+	AllowedHosts []string
 }
 
 // New builds an HTTP server listening on addr. A maxBodyBytes <= 0 falls back to
@@ -55,7 +59,7 @@ func NewWithOptions(st *store.Store, addr string, maxBodyBytes int64, opts Optio
 	}
 	s.http = &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           newHostPolicy(addr, opts.AllowedHosts).wrap(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,

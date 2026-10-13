@@ -39,7 +39,7 @@ test-web: web-deps
 	cd web && npm test
 
 lint:
-	gofmt -l .
+	@out=$$(gofmt -l cmd internal test); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	go vet ./...
 	golangci-lint run
 	cd web && npm run typecheck

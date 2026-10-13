@@ -128,17 +128,40 @@ func ResolveRef(doc map[string]any, ref string) (map[string]any, error) {
 	return result, nil
 }
 
+// maxResolvedNodes bounds how many schema nodes one resolver may emit. Depth
+// alone doesn't bound the output: a schema that refs another twice doubles at
+// every level, so a crafted spec could expand to gigabytes. Past the budget,
+// remaining refs stay unexpanded and are marked "$truncated".
+const maxResolvedNodes = 10000
+
+// resolver inlines $refs from doc, sharing one node budget across every schema
+// it resolves (e.g. all parameters and responses of one operation).
+type resolver struct {
+	doc    map[string]any
+	budget int
+}
+
+func newResolver(doc map[string]any) *resolver {
+	return &resolver{doc: doc, budget: maxResolvedNodes}
+}
+
 // ResolveSchema returns a COPY of node with $ref targets inlined up to depth hops.
 // depth counts only $ref dereferences. Descending into properties/items/etc does not consume depth.
 // At depth 0 a $ref renders as {"$ref":"<Name>"}.
 // When a ref IS expanded, adds "$from":"<Name>" to the expanded object for provenance.
 // Guards against cycles; on unresolvable ref renders {"$ref":"<Name>","$error":"unresolved"}.
+// Once maxResolvedNodes nodes have been emitted, further refs render as
+// {"$ref":"<Name>","$truncated":true}.
 func ResolveSchema(doc, node map[string]any, depth int) map[string]any {
-	seen := make(map[string]bool)
-	return resolveNode(doc, node, depth, seen)
+	return newResolver(doc).schema(node, depth)
 }
 
-func resolveNode(doc, node map[string]any, depth int, seen map[string]bool) map[string]any {
+func (r *resolver) schema(node map[string]any, depth int) map[string]any {
+	return r.node(node, depth, make(map[string]bool))
+}
+
+func (r *resolver) node(node map[string]any, depth int, seen map[string]bool) map[string]any {
+	r.budget--
 	// If node has a $ref, handle it first.
 	if ref, ok := node["$ref"].(string); ok {
 		name := RefName(ref)
@@ -149,7 +172,10 @@ func resolveNode(doc, node map[string]any, depth int, seen map[string]bool) map[
 			// Cycle detected — render as bare ref.
 			return map[string]any{"$ref": name}
 		}
-		target, err := ResolveRef(doc, ref)
+		if r.budget <= 0 {
+			return map[string]any{"$ref": name, "$truncated": true}
+		}
+		target, err := ResolveRef(r.doc, ref)
 		if err != nil {
 			return map[string]any{"$ref": name, "$error": "unresolved"}
 		}
@@ -159,7 +185,7 @@ func resolveNode(doc, node map[string]any, depth int, seen map[string]bool) map[
 			newSeen[k] = v
 		}
 		newSeen[ref] = true
-		expanded := resolveNode(doc, target, depth-1, newSeen)
+		expanded := r.node(target, depth-1, newSeen)
 		expanded["$from"] = name
 		return expanded
 	}
@@ -172,7 +198,7 @@ func resolveNode(doc, node map[string]any, depth int, seen map[string]bool) map[
 				resolvedProps := make(map[string]any, len(props))
 				for propName, propVal := range props {
 					if propMap, ok := propVal.(map[string]any); ok {
-						resolvedProps[propName] = resolveNode(doc, propMap, depth, seen)
+						resolvedProps[propName] = r.node(propMap, depth, seen)
 					} else {
 						resolvedProps[propName] = propVal
 					}
@@ -183,13 +209,13 @@ func resolveNode(doc, node map[string]any, depth int, seen map[string]bool) map[
 			}
 		case "items":
 			if items, ok := v.(map[string]any); ok {
-				out[k] = resolveNode(doc, items, depth, seen)
+				out[k] = r.node(items, depth, seen)
 			} else {
 				out[k] = v
 			}
 		case "additionalProperties":
 			if ap, ok := v.(map[string]any); ok {
-				out[k] = resolveNode(doc, ap, depth, seen)
+				out[k] = r.node(ap, depth, seen)
 			} else {
 				out[k] = v
 			}
@@ -198,7 +224,7 @@ func resolveNode(doc, node map[string]any, depth int, seen map[string]bool) map[
 				resolved := make([]any, len(arr))
 				for i, item := range arr {
 					if im, ok := item.(map[string]any); ok {
-						resolved[i] = resolveNode(doc, im, depth, seen)
+						resolved[i] = r.node(im, depth, seen)
 					} else {
 						resolved[i] = item
 					}

@@ -8,3 +8,6 @@ services:
     # environment:
     #   # Max POST /v1/specs request body in bytes (default 65536 = 64 KiB).
     #   OPENSTASH_MAX_BODY_BYTES: "1048576"
+    #   # Host names to answer besides localhost and IPs (blocks DNS rebinding).
+    #   # Unset, the container answers any Host because it binds to :8080.
+    #   OPENSTASH_ALLOWED_HOSTS: "localhost,openstash"

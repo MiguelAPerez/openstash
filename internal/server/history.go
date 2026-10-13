@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -49,16 +50,16 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	versions := make([]timelineVersion, 0, len(vers))
 	steps := make([]timelineStep, 0, len(vers))
 	var prevDoc map[string]any
-	for i, v := range vers {
+	for _, v := range vers {
 		meta, err := s.store.LoadMeta(specKey, v)
 		if err != nil {
-			writeStoreError(w, err)
-			return
+			continue
 		}
 		doc, err := s.store.LoadSpec(specKey, v)
 		if err != nil {
-			writeStoreError(w, err)
-			return
+			// One unreadable version shouldn't hide the rest of the history.
+			log.Printf("openstash serve: timeline %s: skipping %s: %v", specKey, v, err)
+			continue
 		}
 		versions = append(versions, timelineVersion{
 			Version:     v,
@@ -69,14 +70,18 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 			Operations:  len(spec.BuildIndex(doc)),
 			Schemas:     len(spec.BuildSchemaIndex(doc)),
 		})
-		if i > 0 {
+		if prevDoc != nil {
 			steps = append(steps, timelineStep{
-				From:    vers[i-1],
+				From:    versions[len(versions)-2].Version,
 				To:      v,
 				Summary: spec.CompareDetailed(prevDoc, doc).Summary,
 			})
 		}
 		prevDoc = doc
+	}
+	if len(versions) == 0 {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("not found: %s (run: openstash add)", specKey))
+		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -96,12 +101,28 @@ func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
 	result := spec.CompareDetailed(docs[0], docs[1])
 	result.Baseline.Key, result.Baseline.Version = key, from
 	result.Target.Key, result.Target.Version = key, to
+	// Empty lists are [] rather than null, as the contract documents arrays.
+	result.Operations.Added = nonNil(result.Operations.Added)
+	result.Operations.Removed = nonNil(result.Operations.Removed)
+	result.Operations.Changed = nonNil(result.Operations.Changed)
+	result.Schemas.Added = nonNil(result.Schemas.Added)
+	result.Schemas.Removed = nonNil(result.Schemas.Removed)
+	result.Schemas.Changed = nonNil(result.Schemas.Changed)
 	writeJSON(w, http.StatusOK, result)
 }
 
-// handleCompareDefinition returns the raw definition of one operation
-// (method + path) or one component schema (schema) from both versions, so a
-// client can render a line diff. A side is null when the item is absent there.
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
+// handleCompareDefinition returns the definition of one operation (method +
+// path, as spec.EffectiveOperation: shared $refs resolved, path-level
+// parameters merged) or one raw component schema (schema) from both versions,
+// so a client can render a line diff of what CompareDetailed flagged. A side is
+// null when the item is absent there.
 func (s *Server) handleCompareDefinition(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	method, path, schema := strings.TrimSpace(q.Get("method")), q.Get("path"), q.Get("schema")
@@ -117,12 +138,12 @@ func (s *Server) handleCompareDefinition(w http.ResponseWriter, r *http.Request)
 	sides := make([]any, 2)
 	for i, doc := range docs {
 		if schema != "" {
-			if node, err := spec.GetSchema(doc, schema); err == nil {
+			if node, ok := spec.RawSchema(doc, schema); ok {
 				sides[i] = node
 			}
 			continue
 		}
-		if op := spec.RawOperation(doc, path, method); op != nil {
+		if op := spec.EffectiveOperation(doc, path, method); op != nil {
 			sides[i] = op
 		}
 	}

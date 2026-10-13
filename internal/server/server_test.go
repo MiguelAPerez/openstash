@@ -337,3 +337,44 @@ func TestValidatePathSegment(t *testing.T) {
 		}
 	}
 }
+
+func TestHostPolicy(t *testing.T) {
+	st, err := store.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name    string
+		addr    string
+		allowed []string
+		host    string
+		want    int
+	}{
+		{"loopback name", "127.0.0.1:8080", nil, "localhost:8080", http.StatusOK},
+		{"loopback ip", "127.0.0.1:8080", nil, "127.0.0.1:8080", http.StatusOK},
+		{"ipv6 loopback", "127.0.0.1:8080", nil, "[::1]:8080", http.StatusOK},
+		{"lan ip", "127.0.0.1:8080", nil, "192.168.1.20:8080", http.StatusOK},
+		{"localhost subdomain", "127.0.0.1:8080", nil, "app.localhost:8080", http.StatusOK},
+		{"rebound domain", "127.0.0.1:8080", nil, "evil.example:8080", http.StatusForbidden},
+		{"rebound domain no port", "127.0.0.1:8080", nil, "evil.example", http.StatusForbidden},
+		{"bind host", "openstash.lan:8080", nil, "OpenStash.LAN.:8080", http.StatusOK},
+		{"configured host", "127.0.0.1:8080", []string{"stash.internal"}, "stash.internal", http.StatusOK},
+		{"configured host other", "127.0.0.1:8080", []string{"stash.internal"}, "evil.example", http.StatusForbidden},
+		{"star", "127.0.0.1:8080", []string{"*"}, "evil.example", http.StatusOK},
+		{"wildcard bind", ":8080", nil, "evil.example", http.StatusOK},
+		{"wildcard bind ipv4", "0.0.0.0:8080", nil, "openstash:8080", http.StatusOK},
+		{"wildcard bind configured", ":8080", []string{"stash.internal"}, "evil.example", http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := NewWithOptions(st, tc.addr, 0, Options{AllowedHosts: tc.allowed})
+			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			req.Host = tc.host
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("Host %q on %s = %d, want %d: %s", tc.host, tc.addr, rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}

@@ -2,7 +2,12 @@ openapi: 3.1.0
 info:
   title: openstash serve API
   version: 0.4.0
-  description: HTTP API over the local openstash OpenAPI cache.
+  description: >-
+    HTTP API over the local openstash OpenAPI cache. When the server is bound to
+    a specific host (the CLI default 127.0.0.1:8080), every route returns 403
+    unless the Host header is localhost, *.localhost, an IP address, the bind
+    host, or listed in --allowed-hosts / OPENSTASH_ALLOWED_HOSTS. This blocks DNS
+    rebinding.
 servers:
   - url: http://localhost:8080
 paths:
@@ -25,6 +30,9 @@ paths:
   /v1/specs:
     get:
       summary: List stored specs
+      description: >-
+        Entries are ordered by key, then version oldest to newest (the timeline
+        order), so the last entry for a key is its latest version.
       operationId: listSpecs
       responses:
         "200":
@@ -78,6 +86,7 @@ paths:
   /v1/specs/{specKey}/versions:
     get:
       summary: List stored versions for a key
+      description: Versions oldest to newest, in the timeline order.
       operationId: listVersions
       parameters:
         - $ref: "#/components/parameters/specKey"
@@ -96,6 +105,8 @@ paths:
                     type: array
                     items:
                       type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/specs/{specKey}/versions/{version}:
@@ -179,7 +190,10 @@ paths:
   /v1/specs/{specKey}/versions/{version}/schemas/{name}:
     get:
       summary: Show one component schema
-      description: Mirrors `openstash schema`. $refs are inlined up to `depth` hops.
+      description: >-
+        Mirrors `openstash schema`. $refs are inlined up to `depth` hops. One
+        response expands at most a fixed number of schema nodes; refs past that
+        stay as `{"$ref": name, "$truncated": true}`.
       operationId: getSchema
       parameters:
         - $ref: "#/components/parameters/specKey"
@@ -215,6 +229,8 @@ paths:
                     type: integer
                   schema:
                     type: object
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/specs/{specKey}/timeline:
@@ -223,6 +239,7 @@ paths:
       description: >-
         Lists every stored version of a key oldest to newest (semver order when
         versions parse) and a change summary between each consecutive pair.
+        Versions whose files can't be read are left out.
       operationId: timeline
       parameters:
         - $ref: "#/components/parameters/specKey"
@@ -253,16 +270,24 @@ paths:
                           type: string
                         summary:
                           $ref: "#/components/schemas/CompareSummary"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/specs/{specKey}/compare:
     get:
       summary: Diff two stored versions of a key
       description: >-
-        Like `openstash compare`, plus definition-level detection: operations whose
-        parameters, requestBody, responses, deprecated or security differ are
-        reported as changed (with an empty object under each changed field), and
-        schemas whose raw definition differs get `definitionChanged: true`.
+        Like `openstash compare`, plus definition-level detection. Operations are
+        compared as clients see them: path-level parameters merged in and $refs to
+        shared parameters, request bodies, responses and headers resolved, with
+        document-level security (and Swagger 2 consumes/produces) as the default.
+        Operations whose parameters, requestBody, responses, deprecated, security,
+        servers, callbacks, consumes or produces differ are reported as changed
+        (with an empty object under each changed field). Schemas whose raw
+        definition differs get `definitionChanged: true`. Changes confined to x-*
+        vendor extensions also set `extensionsOnly: true`. Changes to info,
+        top-level servers or security scheme definitions alone are not reported.
       operationId: compare
       parameters:
         - $ref: "#/components/parameters/specKey"
@@ -281,11 +306,13 @@ paths:
           $ref: "#/components/responses/NotFound"
   /v1/specs/{specKey}/compare/definition:
     get:
-      summary: Raw definition of one operation or schema in both versions
+      summary: Definition of one operation or schema in both versions
       description: >-
-        Returns the raw operation (method + path) or component schema (schema)
-        from both versions for line diffing. A side is null when the item does
-        not exist in that version.
+        Returns the operation (method + path) as the compare endpoint sees it
+        (shared $refs resolved, path-level parameters merged), or the raw
+        component schema (schema), from both versions for line diffing. A side
+        is null when the item does not exist in that version. A schema side can
+        be a boolean (OpenAPI 3.1).
       operationId: compareDefinition
       parameters:
         - $ref: "#/components/parameters/specKey"
@@ -322,9 +349,9 @@ paths:
                   item:
                     type: object
                   baseline:
-                    type: [object, "null"]
+                    type: [object, boolean, "null"]
                   target:
-                    type: [object, "null"]
+                    type: [object, boolean, "null"]
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -450,10 +477,64 @@ components:
           $ref: "#/components/schemas/CompareSummary"
         operations:
           type: object
-          description: added / removed (operation index entries) and changed ({method, path, changes})
+          required: [added, removed, changed]
+          properties:
+            added:
+              type: array
+              items:
+                type: object
+              description: operation index entries
+            removed:
+              type: array
+              items:
+                type: object
+              description: operation index entries
+            changed:
+              type: array
+              items:
+                type: object
+                required: [method, path, changes]
+                properties:
+                  method:
+                    type: string
+                  path:
+                    type: string
+                  changes:
+                    type: object
+                  extensionsOnly:
+                    type: boolean
         schemas:
           type: object
-          description: added / removed (names) and changed ({name, fieldsAdded, fieldsRemoved, definitionChanged})
+          required: [added, removed, changed]
+          properties:
+            added:
+              type: array
+              items:
+                type: string
+            removed:
+              type: array
+              items:
+                type: string
+            changed:
+              type: array
+              items:
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: string
+                  fieldsAdded:
+                    type: array
+                    items:
+                      type: string
+                  fieldsRemoved:
+                    type: array
+                    items:
+                      type: string
+                  definitionChanged:
+                    type: boolean
+                  extensionsOnly:
+                    type: boolean
     Error:
       type: object
       required: [error]

@@ -179,6 +179,10 @@ func (s *Store) List() ([]Entry, error) {
 	return out, nil
 }
 
+// VersionsForKey returns the stored versions of key, as recorded in each
+// version's meta.json. Directories without a readable meta.json are skipped,
+// like List does: Add writes meta.json last, so they are stray or still being
+// written.
 func (s *Store) VersionsForKey(key string) ([]string, error) {
 	keyPath := filepath.Join(s.Root, "specs", sanitize(key))
 	vers, err := os.ReadDir(keyPath)
@@ -190,9 +194,18 @@ func (s *Store) VersionsForKey(key string) ([]string, error) {
 	}
 	var out []string
 	for _, v := range vers {
-		if v.IsDir() {
-			out = append(out, unsanitize(v.Name()))
+		if !v.IsDir() {
+			continue
 		}
+		name := unsanitize(v.Name())
+		meta, err := s.LoadMeta(key, name)
+		if err != nil {
+			continue
+		}
+		if meta.Version != "" && sanitize(meta.Version) == v.Name() {
+			name = meta.Version
+		}
+		out = append(out, name)
 	}
 	return out, nil
 }

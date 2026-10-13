@@ -244,15 +244,144 @@ func TestCompareDetailedDetectsDefinitionChanges(t *testing.T) {
 	}
 }
 
-func TestRawOperation(t *testing.T) {
-	doc := map[string]any{"paths": map[string]any{"/a": map[string]any{"get": map[string]any{"summary": "x"}}}}
-	if op := RawOperation(doc, "/a", "GET"); op == nil || op["summary"] != "x" {
-		t.Fatalf("RawOperation = %v", op)
+func TestEffectiveOperation(t *testing.T) {
+	doc := map[string]any{
+		"security": []any{map[string]any{"key": []any{}}},
+		"components": map[string]any{
+			"parameters": map[string]any{
+				"Id":    map[string]any{"name": "id", "in": "path", "description": "shared"},
+				"Alias": map[string]any{"$ref": "#/components/parameters/Id"},
+			},
+			"responses": map[string]any{
+				"Ok": map[string]any{"description": "ok", "headers": map[string]any{
+					"X-Rate": map[string]any{"$ref": "#/components/headers/Rate"},
+				}},
+			},
+			"headers":       map[string]any{"Rate": map[string]any{"description": "rate"}},
+			"requestBodies": map[string]any{"Pet": map[string]any{"required": true}},
+		},
+		"paths": map[string]any{"/a/{id}": map[string]any{
+			"parameters": []any{
+				map[string]any{"$ref": "#/components/parameters/Alias"},
+				map[string]any{"name": "trace", "in": "header"},
+			},
+			"get": map[string]any{
+				"parameters":  []any{map[string]any{"name": "trace", "in": "header", "description": "own"}},
+				"requestBody": map[string]any{"$ref": "#/components/requestBodies/Pet"},
+				"responses": map[string]any{
+					"200": map[string]any{"$ref": "#/components/responses/Ok"},
+					"404": map[string]any{"$ref": "other.yaml#/NotFound"},
+				},
+			},
+		}},
 	}
-	if RawOperation(doc, "/a", "POST") != nil || RawOperation(doc, "/missing", "GET") != nil {
+	op := EffectiveOperation(doc, "/a/{id}", "GET")
+	params, _ := op["parameters"].([]any)
+	if len(params) != 2 || params[0].(map[string]any)["description"] != "shared" || params[1].(map[string]any)["description"] != "own" {
+		t.Fatalf("parameters = %v, want shared id then own trace", params)
+	}
+	if op["requestBody"].(map[string]any)["required"] != true {
+		t.Fatalf("requestBody not resolved: %v", op["requestBody"])
+	}
+	ok := op["responses"].(map[string]any)["200"].(map[string]any)
+	if ok["description"] != "ok" || ok["headers"].(map[string]any)["X-Rate"].(map[string]any)["description"] != "rate" {
+		t.Fatalf("response or header not resolved: %v", ok)
+	}
+	if op["responses"].(map[string]any)["404"].(map[string]any)["$ref"] != "other.yaml#/NotFound" {
+		t.Fatal("external ref should be left alone")
+	}
+	if op["security"] == nil {
+		t.Fatal("document-level security should apply")
+	}
+	// The source document must not be modified.
+	if _, ok := doc["components"].(map[string]any)["responses"].(map[string]any)["Ok"].(map[string]any)["headers"].(map[string]any)["X-Rate"].(map[string]any)["$ref"]; !ok {
+		t.Fatal("EffectiveOperation mutated the document")
+	}
+	if EffectiveOperation(doc, "/a/{id}", "POST") != nil || EffectiveOperation(doc, "/missing", "GET") != nil {
 		t.Fatal("expected nil for missing operation")
 	}
-	if RawOperation(map[string]any{}, "/a", "GET") != nil {
+	if EffectiveOperation(map[string]any{}, "/a", "GET") != nil {
 		t.Fatal("expected nil when spec has no paths")
+	}
+}
+
+// Changes that only live in shared components or path-level parameters must
+// still flag the operations that use them.
+func TestCompareDetailedFollowsSharedDefinitions(t *testing.T) {
+	doc := func(pageType, okDesc, bodyType, traceDesc string) map[string]any {
+		return map[string]any{
+			"components": map[string]any{
+				"parameters":    map[string]any{"Page": map[string]any{"name": "page", "in": "query", "schema": map[string]any{"type": pageType}}},
+				"responses":     map[string]any{"Ok": map[string]any{"description": okDesc}},
+				"requestBodies": map[string]any{"Pet": map[string]any{"content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": bodyType}}}}},
+			},
+			"paths": map[string]any{
+				"/pets": map[string]any{
+					"get": map[string]any{
+						"parameters": []any{map[string]any{"$ref": "#/components/parameters/Page"}},
+						"responses":  map[string]any{"200": map[string]any{"$ref": "#/components/responses/Ok"}},
+					},
+					"post": map[string]any{"requestBody": map[string]any{"$ref": "#/components/requestBodies/Pet"}},
+				},
+				"/pets/{id}": map[string]any{
+					"parameters": []any{map[string]any{"name": "trace", "in": "header", "description": traceDesc}},
+					"get":        map[string]any{"summary": "Get pet"},
+				},
+			},
+		}
+	}
+	base := doc("integer", "ok", "object", "trace id")
+
+	cases := []struct {
+		name   string
+		target map[string]any
+		op     string
+		field  string
+	}{
+		{"shared parameter", doc("string", "ok", "object", "trace id"), "GET /pets", "parameters"},
+		{"shared response", doc("integer", "fine", "object", "trace id"), "GET /pets", "responses"},
+		{"shared request body", doc("integer", "ok", "string", "trace id"), "POST /pets", "requestBody"},
+		{"path-level parameter", doc("integer", "ok", "object", "request id"), "GET /pets/{id}", "parameters"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := CompareDetailed(base, tc.target)
+			if len(res.Operations.Changed) != 1 {
+				t.Fatalf("changed ops = %+v, want just %s", res.Operations.Changed, tc.op)
+			}
+			c := res.Operations.Changed[0]
+			if c.Method+" "+c.Path != tc.op {
+				t.Fatalf("changed op = %s %s, want %s", c.Method, c.Path, tc.op)
+			}
+			if _, ok := c.Changes[tc.field]; !ok || c.ExtensionsOnly {
+				t.Fatalf("changes = %+v (extensionsOnly=%v), want %s", c.Changes, c.ExtensionsOnly, tc.field)
+			}
+			if res.Summary.Operations.Changed != 1 {
+				t.Fatalf("summary = %+v", res.Summary.Operations)
+			}
+		})
+	}
+}
+
+func TestCompareDetailedFlagsExtensionOnlyChanges(t *testing.T) {
+	doc := func(pkg, xFieldType string) map[string]any {
+		return map[string]any{"definitions": map[string]any{
+			"Repo": map[string]any{"type": "object", "x-go-package": pkg},
+			"Flag": map[string]any{"type": "object", "properties": map[string]any{
+				// A property literally named x-*: data, not a vendor extension.
+				"x-enabled": map[string]any{"type": xFieldType},
+			}},
+		}}
+	}
+	res := CompareDetailed(doc("a/models", "boolean"), doc("b/models", "string"))
+	got := map[string]bool{}
+	for _, s := range res.Schemas.Changed {
+		got[s.Name] = s.ExtensionsOnly
+	}
+	if extOnly, ok := got["Repo"]; !ok || !extOnly {
+		t.Fatalf("Repo should be an extension-only change: %+v", res.Schemas.Changed)
+	}
+	if extOnly, ok := got["Flag"]; !ok || extOnly {
+		t.Fatalf("Flag changed a real property and must not be extension-only: %+v", res.Schemas.Changed)
 	}
 }

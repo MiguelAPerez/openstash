@@ -118,8 +118,18 @@ Defense in depth that *is* enforced regardless of bind address:
   `OPENSTASH_MAX_BODY_BYTES` or `--max-body-bytes`) and rejects unknown JSON fields.
 - `POST /v1/specs` returns 415 unless `Content-Type` is `application/json`
   (`isJSONContentType`). That forces a CORS preflight for any cross-origin
-  browser request, and the server never answers one, so a page in the user's
-  browser can't drive a localhost instance (CSRF). Keep this if you add CORS.
+  browser request, and the server never answers one, so another site can't
+  post through a form or simple `fetch` (CSRF). Keep this if you add CORS.
+- DNS rebinding gets around same-origin checks entirely, so `hostPolicy`
+  (`internal/server/host.go`) checks `Host` on every route. On a specific bind
+  it accepts localhost, `*.localhost`, IP literals, the bind host, and
+  `--allowed-hosts` / `OPENSTASH_ALLOWED_HOSTS`. Wildcard binds accept any Host
+  unless that list is set, so Docker setups reached by hostname keep working.
+- `spec.ResolveSchema` / `GetOperationDepth` share a node budget per call
+  (`maxResolvedNodes`). Shared refs fan out exponentially with depth, so depth
+  alone doesn't bound a response.
+- Store errors are logged; clients get a generic 500 without filesystem paths
+  (`writeStoreError`).
 
 ## Decisions (OpenAPI 3.1 aligned)
 
