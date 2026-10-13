@@ -158,9 +158,23 @@ openstash refresh gitea
 openstash serve            # then open http://127.0.0.1:8080/
 ```
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ui-timeline-dark.webp">
+  <img alt="Timeline view for gitea: three stored versions with change counts per step, and a line diff showing that 28.1.0 renamed the pattern query parameter of GET /admin/unadopted to query" src="docs/images/ui-timeline-light.webp">
+</picture>
+
+*Timeline: stepping through what changed between gitea 1.27.2 and 28.1.0.*
+
 - **Explore** — search endpoints and schemas, inspect one operation with `$ref`s inlined.
 - **Reference** — docs-style view of any stored version: overview and servers, operations grouped by tag, and every model (schema).
 - **Timeline** — every stored version of a key in order, with change counts between each step. Pick a step and walk through each added, removed, or changed endpoint and schema as a line diff (`j`/`k` for changes, `[`/`]` for steps).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ui-explore-dark.webp">
+  <img alt="Explore view for the Cursor API: search results for agent, with POST /v1/agents open showing its request body fields" src="docs/images/ui-explore-light.webp">
+</picture>
+
+*Explore: searching the Cursor API and opening one operation.*
 
 Store a new version of a spec under the same key (`openstash add gitea --from … --version 1.22.0`) to grow its timeline. Pass `--no-ui` to serve the API only.
 

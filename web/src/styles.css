@@ -589,7 +589,7 @@ details.raw > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  width: 132px;
+  width: 150px;
   padding: 0 4px;
   text-align: center;
 }
@@ -604,6 +604,7 @@ details.raw > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .rail-node.endpoint .rail-dot { border-color: var(--accent); background: var(--accent); }
 .rail-version { font-weight: 650; font-size: 13px; overflow-wrap: anywhere; }
 .rail-date, .rail-stats { font-size: 11.5px; }
+.rail-stats { white-space: nowrap; }
 .rail-open { font-size: 11.5px; }
 .rail-step {
   position: relative;
