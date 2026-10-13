@@ -1,3 +1,9 @@
+## v0.6.0 (2026-10-13)
+
+### Feat
+
+- web UI with version timeline and step-through diffs (#14)
+
 ## v0.5.0 (2026-07-09)
 
 ### Feat
