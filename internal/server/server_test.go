@@ -36,6 +36,13 @@ func testDoc(version string) map[string]any {
 	}
 }
 
+// addRequest builds a POST /v1/specs request with a JSON content type.
+func addRequest(body []byte) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
 func seedSpec(t *testing.T, st *store.Store, key, version string) {
 	t.Helper()
 	if _, _, err := st.Add(key, version, "file.json", "", testDoc(version)); err != nil {
@@ -120,7 +127,7 @@ func TestAddSpec(t *testing.T) {
 		"from": specPath,
 	})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body))
+	req := addRequest(body)
 	srv.Handler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusCreated {
@@ -141,7 +148,7 @@ func TestAddConflict(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"key": "api", "from": specPath})
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+	srv.Handler().ServeHTTP(rec, addRequest(body))
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409", rec.Code)
 	}
@@ -184,7 +191,7 @@ func TestAddRejectsTraversalKey(t *testing.T) {
 	for _, key := range []string{"..", "../escape", "a/b", "a@b"} {
 		body, _ := json.Marshal(map[string]string{"key": key, "from": specPath})
 		rec := httptest.NewRecorder()
-		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+		srv.Handler().ServeHTTP(rec, addRequest(body))
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("key %q: status = %d, want 400: %s", key, rec.Code, rec.Body.String())
 		}
@@ -201,9 +208,49 @@ func TestAddRejectsUnknownFields(t *testing.T) {
 	srv, _ := testServer(t)
 	body := []byte(`{"key":"api","from":"x","bogus":"oops"}`)
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+	srv.Handler().ServeHTTP(rec, addRequest(body))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAddRequiresJSONContentType(t *testing.T) {
+	specPath := filepath.Join(t.TempDir(), "spec.json")
+	data, err := json.Marshal(testDoc("1.0.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(specPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]string{"key": "api", "from": specPath})
+
+	cases := []struct {
+		contentType string
+		want        int
+	}{
+		{"", http.StatusUnsupportedMediaType},
+		{"text/plain", http.StatusUnsupportedMediaType},
+		{"application/x-www-form-urlencoded", http.StatusUnsupportedMediaType},
+		{"multipart/form-data; boundary=x", http.StatusUnsupportedMediaType},
+		{"application/json; charset=utf-8", http.StatusCreated},
+	}
+	for _, tc := range cases {
+		t.Run(tc.contentType, func(t *testing.T) {
+			srv, st := testServer(t)
+			req := httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body))
+			if tc.contentType != "" {
+				req.Header.Set("Content-Type", tc.contentType)
+			}
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, tc.want, rec.Body.String())
+			}
+			if stored := st.Exists("api", "1.0.0"); stored != (tc.want == http.StatusCreated) {
+				t.Fatalf("stored = %v after status %d", stored, rec.Code)
+			}
+		})
 	}
 }
 
@@ -239,7 +286,7 @@ func TestAddRejectsOversizedBody(t *testing.T) {
 	}
 	body, _ := json.Marshal(map[string]string{"key": "api", "from": "x", "endpoint": string(big)})
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+	srv.Handler().ServeHTTP(rec, addRequest(body))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
 	}
@@ -254,7 +301,7 @@ func TestConfigurableBodyCap(t *testing.T) {
 	srv := New(st, ":0", 32)
 	body, _ := json.Marshal(map[string]string{"key": "api", "from": "https://example.test/openapi.json"})
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/specs", bytes.NewReader(body)))
+	srv.Handler().ServeHTTP(rec, addRequest(body))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 for body over 32-byte cap: %s", rec.Code, rec.Body.String())
 	}
@@ -288,5 +335,46 @@ func TestValidatePathSegment(t *testing.T) {
 		if err := validatePathSegment("key", v); err == nil {
 			t.Errorf("validatePathSegment(%q) = nil, want error", v)
 		}
+	}
+}
+
+func TestHostPolicy(t *testing.T) {
+	st, err := store.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name    string
+		addr    string
+		allowed []string
+		host    string
+		want    int
+	}{
+		{"loopback name", "127.0.0.1:8080", nil, "localhost:8080", http.StatusOK},
+		{"loopback ip", "127.0.0.1:8080", nil, "127.0.0.1:8080", http.StatusOK},
+		{"ipv6 loopback", "127.0.0.1:8080", nil, "[::1]:8080", http.StatusOK},
+		{"lan ip", "127.0.0.1:8080", nil, "192.168.1.20:8080", http.StatusOK},
+		{"localhost subdomain", "127.0.0.1:8080", nil, "app.localhost:8080", http.StatusOK},
+		{"rebound domain", "127.0.0.1:8080", nil, "evil.example:8080", http.StatusForbidden},
+		{"rebound domain no port", "127.0.0.1:8080", nil, "evil.example", http.StatusForbidden},
+		{"bind host", "openstash.lan:8080", nil, "OpenStash.LAN.:8080", http.StatusOK},
+		{"configured host", "127.0.0.1:8080", []string{"stash.internal"}, "stash.internal", http.StatusOK},
+		{"configured host other", "127.0.0.1:8080", []string{"stash.internal"}, "evil.example", http.StatusForbidden},
+		{"star", "127.0.0.1:8080", []string{"*"}, "evil.example", http.StatusOK},
+		{"wildcard bind", ":8080", nil, "evil.example", http.StatusOK},
+		{"wildcard bind ipv4", "0.0.0.0:8080", nil, "openstash:8080", http.StatusOK},
+		{"wildcard bind configured", ":8080", []string{"stash.internal"}, "evil.example", http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := NewWithOptions(st, tc.addr, 0, Options{AllowedHosts: tc.allowed})
+			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			req.Host = tc.host
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("Host %q on %s = %d, want %d: %s", tc.host, tc.addr, rec.Code, tc.want, rec.Body.String())
+			}
+		})
 	}
 }

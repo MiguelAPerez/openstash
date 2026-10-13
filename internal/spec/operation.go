@@ -169,14 +169,17 @@ func GetOperationDepth(doc map[string]any, path, method string, depth int) (*Ope
 		Description: strField(op, "description"),
 		Tags:        stringSliceField(op, "tags"),
 	}
+	// One resolver for the whole operation so its node budget covers every
+	// parameter, body and response together.
+	res := newResolver(doc)
 	if params, ok := op["parameters"].([]any); ok {
-		d.Parameters = expandedParameters(doc, params, depth)
+		d.Parameters = expandedParameters(res, params, depth)
 	}
 	if rb, ok := op["requestBody"].(map[string]any); ok {
-		d.RequestBody = expandedRequestBody(doc, rb, depth)
+		d.RequestBody = expandedRequestBody(res, rb, depth)
 	}
 	if resp, ok := op["responses"].(map[string]any); ok {
-		d.Responses = expandedResponses(doc, resp, depth)
+		d.Responses = expandedResponses(res, resp, depth)
 	}
 	return d, nil
 }
@@ -184,7 +187,7 @@ func GetOperationDepth(doc map[string]any, path, method string, depth int) (*Ope
 // expandedParameters inlines $ref schemas attached to parameters. This covers
 // Swagger 2.0 body parameters (in: body, schema: {$ref}) as well as OpenAPI 3.0
 // parameter schemas. Parameters without a schema are passed through unchanged.
-func expandedParameters(doc map[string]any, params []any, depth int) []any {
+func expandedParameters(res *resolver, params []any, depth int) []any {
 	out := make([]any, len(params))
 	for i, p := range params {
 		pm, ok := p.(map[string]any)
@@ -201,13 +204,13 @@ func expandedParameters(doc map[string]any, params []any, depth int) []any {
 		for k, v := range pm {
 			np[k] = v
 		}
-		np["schema"] = ResolveSchema(doc, schema, depth)
+		np["schema"] = res.schema(schema, depth)
 		out[i] = np
 	}
 	return out
 }
 
-func expandedRequestBody(doc map[string]any, rb map[string]any, depth int) map[string]any {
+func expandedRequestBody(res *resolver, rb map[string]any, depth int) map[string]any {
 	out := map[string]any{}
 	if req, ok := rb["required"].(bool); ok {
 		out["required"] = req
@@ -220,7 +223,7 @@ func expandedRequestBody(doc map[string]any, rb map[string]any, depth int) map[s
 		for ct, body := range content {
 			if bm, ok := body.(map[string]any); ok {
 				if schema, ok := bm["schema"].(map[string]any); ok {
-					expanded[ct] = map[string]any{"schema": ResolveSchema(doc, schema, depth)}
+					expanded[ct] = map[string]any{"schema": res.schema(schema, depth)}
 				} else {
 					expanded[ct] = body
 				}
@@ -231,7 +234,7 @@ func expandedRequestBody(doc map[string]any, rb map[string]any, depth int) map[s
 	return out
 }
 
-func expandedResponses(doc map[string]any, resp map[string]any, depth int) map[string]any {
+func expandedResponses(res *resolver, resp map[string]any, depth int) map[string]any {
 	out := make(map[string]any, len(resp))
 	for code, raw := range resp {
 		rm, ok := raw.(map[string]any)
@@ -242,7 +245,7 @@ func expandedResponses(doc map[string]any, resp map[string]any, depth int) map[s
 		// Swagger 2.0 named response: the response is itself a $ref into
 		// #/responses/... — resolve the whole response node.
 		if _, ok := rm["$ref"].(string); ok {
-			out[code] = ResolveSchema(doc, rm, depth)
+			out[code] = res.schema(rm, depth)
 			continue
 		}
 		entry := map[string]any{}
@@ -251,7 +254,7 @@ func expandedResponses(doc map[string]any, resp map[string]any, depth int) map[s
 		}
 		// Swagger 2.0: response schema lives directly on the response.
 		if schema, ok := rm["schema"].(map[string]any); ok {
-			entry["schema"] = ResolveSchema(doc, schema, depth)
+			entry["schema"] = res.schema(schema, depth)
 		}
 		// OpenAPI 3.0: response schema lives under content[mediaType].schema.
 		if content, ok := rm["content"].(map[string]any); ok {
@@ -259,7 +262,7 @@ func expandedResponses(doc map[string]any, resp map[string]any, depth int) map[s
 			for ct, body := range content {
 				if bm, ok := body.(map[string]any); ok {
 					if schema, ok := bm["schema"].(map[string]any); ok {
-						expanded[ct] = map[string]any{"schema": ResolveSchema(doc, schema, depth)}
+						expanded[ct] = map[string]any{"schema": res.schema(schema, depth)}
 					}
 				}
 			}

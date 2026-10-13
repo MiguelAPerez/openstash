@@ -6,3 +6,6 @@ bench/
 .agents/
 *.md
 !api/
+**/node_modules
+internal/server/web/dist
+docs/images/

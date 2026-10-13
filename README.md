@@ -1,174 +1,66 @@
 # openstash
 
-A way to cache OpenAPI specs locally so you (or an agent) can look up endpoints without re-downloading or parsing huge `swagger.json` files every time.
+**Keep the OpenAPI specs you work with on your machine, and look up exactly the endpoint you need, from the terminal, your coding agent, or the browser.**
 
-*Endpoints your agent actually finds. [See the benchmarks →](bench/README.md)*
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ui-timeline-dark.webp">
+  <img alt="openstash web UI: the gitea timeline, with a line diff showing that version 28.1.0 renamed the pattern query parameter of GET /admin/unadopted to query" src="docs/images/ui-timeline-light.webp">
+</picture>
 
+## Why openstash
 
-| Spec     | Size   | Full spec | openstash | Saved    | Accuracy      |
-| -------- | ------ | --------- | --------- | -------- | ------------- |
-| petstore | 20 KB  | 4,953     | 1,585     | 3×       | 100% → 100%   |
-| cursor   | 72 KB  | 12,548    | 1,833     | 7×       | 0% → 100%     |
-| gitea    | 820 KB | 148,146   | 866       | 171×     | 0% → 100%     |
-| stripe   | 7.5 MB | 1,054,928 | 5,106     | **207×** | 0% → **100%** |
-
-
-## Why use it?
-
-- **Less noise** — Slim search results or one operation at a time instead of an entire spec in context.
-- **Stable references** — Same `key@version` every session.
-- **Three levels of detail** — `search` (discover), `show` (one op), `gather` (search + details).
+- **Your agent finds the right endpoint.** Instead of reading a whole spec, it searches and pulls one operation. On gitea's 820 KB spec that's about 870 tokens instead of 148,000. In our benchmark, a 14B model picked the right endpoint every time with openstash and never from the raw spec. [See the benchmarks →](bench/README.md)
+- **See how an API changed.** Store each version you care about, then step through what was added, removed or changed between them.
+- **Local and fast.** Specs are fetched once and indexed on your machine. Refer to any of them as `key@version`, the same way every session.
 
 ## Install
-
-### Homebrew (macOS / Linux)
 
 ```bash
 brew tap MiguelAPerez/tap
 brew install openstash
 ```
 
-### Pre-built binary
+Or use a [pre-built binary](docs/install.md#pre-built-binary) or the [Docker image](docs/install.md#docker).
 
-macOS and Linux binaries are published on the [releases page](https://github.com/MiguelAPerez/openstash/releases/latest). The one-liner below detects your OS and architecture automatically:
+## Quick start
 
-```bash
-curl -fsSL https://github.com/MiguelAPerez/openstash/releases/latest/download/openstash_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz
-sudo mv openstash /usr/local/bin/
-```
-
-Verify:
+Add a spec. Any OpenAPI or Swagger file works, from a URL or a local path:
 
 ```bash
-openstash --version
+openstash add petstore --from https://petstore3.swagger.io/api/v3/openapi.json
 ```
 
-### Docker (HTTP server)
-
-Container images are published to GitHub Container Registry on each release:
+Find an endpoint, then get everything you need to call it:
 
 ```bash
-docker pull ghcr.io/miguelaperez/openstash:latest
-docker run -p 8080:8080 -v ~/.openstash:/data ghcr.io/miguelaperez/openstash:latest
+openstash search petstore "find pets by status"
+openstash show petstore --method GET --path /pet/findByStatus --expand
 ```
 
-The image runs `openstash serve` with the store at `/data`. Mount your local cache or an empty directory.
-
-**Using the API:** [docs/serve-api.md](docs/serve-api.md) — curl examples, endpoint reference, and client code snippets.
-
-For local development from source:
+Or browse it all in the web UI:
 
 ```bash
-docker compose up --build
-curl http://localhost:8080/health
+openstash serve      # then open http://127.0.0.1:8080
 ```
 
-## Getting started
+## Use it with your coding agent
 
-### Add your first spec
+Every command prints JSON, so agents can run openstash directly. Add something like this to your project's `AGENTS.md` or `CLAUDE.md`:
 
-```bash
-openstash add gitea \
-  --from https://gitea.example/swagger.v1.json
+```markdown
+Before calling an HTTP API, look it up with openstash instead of reading its OpenAPI file:
+- `openstash explain <key>` for an overview and example commands
+- `openstash search <key> "<what you need>"` to find the endpoint
+- `openstash show <key> --method <METHOD> --path <path> --expand` for its parameters and body
 ```
 
-If the spec has `info.version`, that becomes the version tag automatically. Override it when needed:
+Agents that can't run commands can use the [HTTP API](docs/serve-api.md) instead.
 
-```bash
-openstash add gitea \
-  --version 1.0.0 \
-  --from ./swagger.json \
-  --endpoint https://gitea.example/api/v1
-```
+## Docs
 
-List stored specs:
-
-```bash
-openstash list
-```
-
-## Usage
-
-Every stored spec is referenced as `key@version`. Omit the version to use the latest stored version for that key.
-
-```bash
-openstash search gitea "user repos"          # latest gitea version
-openstash search gitea@1.0.0 "user repos"    # specific version
-```
-
-### search — find endpoints (slim)
-
-```bash
-openstash search gitea "user repos"
-openstash search gitea@1.0.0 "repos" --path-prefix /user --method GET
-```
-
-### show — one operation (full detail)
-
-```bash
-openstash show gitea --path /user/repos --method GET
-openstash show gitea --path /user/repos --method GET --depth 2
-openstash show gitea --path /user/repos --method GET --expand
-```
-
-### gather — search plus expanded details
-
-```bash
-openstash gather gitea "subscription" --depth 2
-openstash gather gitea "subscription" --expand
-openstash gather gitea@1.0.0 --path /user/repos --method GET
-```
-
-### dump — full stored spec
-
-Print the complete OpenAPI document from the local store (pipe to `jq`, redirect to a file, etc.).
-
-```bash
-openstash dump gitea
-openstash dump forgejo@15.0.0 | jq '.info'
-```
-
-### compare — diff two specs
-
-Compare operations and schemas between two stored specs. The first argument is the **baseline**; the second is the **target**.
-
-- **added** — present in target only
-- **removed** — present in baseline only
-- **changed** — present in both with differences
-
-```bash
-openstash compare forgejo@12 forgejo@15
-openstash compare forgejo gitea --brief
-openstash compare forgejo gitea --section operations --limit 10
-```
-
-### refresh — check for updates
-
-Re-fetches the source and reports whether `info.version` changed (does not overwrite stored specs).
-
-```bash
-openstash refresh gitea
-```
-
-## Storage
-
-Default location:
-
-```
-~/.openstash/
-```
-
-Override for a session:
-
-```bash
-openstash --store /path/to/store list
-```
-
-Or set `OPENSTASH_STORE` (used by `serve` in containers):
-
-```bash
-export OPENSTASH_STORE=/path/to/store
-openstash serve --addr :8080
-```
-
-YAML and JSON sources are normalized to JSON on disk.
+- [Install](docs/install.md): Homebrew, binaries, Docker, building from source
+- [CLI reference](docs/cli.md): every command, `key@version`, where specs are stored
+- [Web UI](docs/web-ui.md): Explore, Reference and the version timeline
+- [HTTP API](docs/serve-api.md): run openstash as a server for tools and agents
+- [Benchmarks](bench/README.md): token cost and accuracy compared with raw specs
+- [Contributing](CONTRIBUTING.md)

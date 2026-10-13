@@ -2,6 +2,8 @@
 
 openstash can run as a long-lived HTTP server (`openstash serve`) so agents and tools can query cached OpenAPI specs without shelling out to the CLI. Responses mirror the JSON the CLI prints.
 
+The same server hosts the [web UI](web-ui.md) at `/` (explore, API reference, version timeline with diffs). Disable it with `--no-ui`.
+
 **Base URL:** `http://localhost:8080` (default when running locally or via Docker on port 8080)
 
 **Contract:** [`api/serve.openapi.yaml`](../api/serve.openapi.yaml)
@@ -32,8 +34,10 @@ openstash serve --addr 127.0.0.1:8080
 |---------|------|---------|---------|
 | `OPENSTASH_STORE` | `--store` | `~/.openstash` | Store directory (`/data` in the Docker image) |
 | `OPENSTASH_MAX_BODY_BYTES` | `--max-body-bytes` | `65536` (64 KiB) | Max `POST /v1/specs` request body |
+| — | `--no-ui` | off | Serve the API only (no browser UI at `/`) |
+| `OPENSTASH_ALLOWED_HOSTS` | `--allowed-hosts` | none | Extra `Host` names to accept (comma-separated), or `*` for any. See [Security notes](#security-notes) |
 
-`POST /v1/specs` accepts a small JSON body (`key`, `from`, `version`, `endpoint`). The default 64 KiB cap is plenty when `from` is a URL or file path. Raise it only if you post large specs inline.
+`POST /v1/specs` accepts a small JSON body (`key`, `from`, `version`, `endpoint`) and requires `Content-Type: application/json` (anything else gets `415`). The default 64 KiB cap is plenty when `from` is a URL or file path. Raise it only if you post large specs inline.
 
 ## Quick check
 
@@ -55,6 +59,10 @@ All endpoints return JSON. Errors look like `{"error":"..."}` with an appropriat
 | `GET` | `/v1/specs/{specKey}/versions` | list stored versions |
 | `GET` | `/v1/specs/{specKey}/versions/{version}` | `openstash dump` (pinned) |
 | `GET` | `/v1/specs/{specKey}/versions/{version}/operations` | `openstash search` / `show` / `gather` |
+| `GET` | `/v1/specs/{specKey}/versions/{version}/schemas/{name}` | `openstash schema` |
+| `GET` | `/v1/specs/{specKey}/timeline` | version history with per-step change counts |
+| `GET` | `/v1/specs/{specKey}/compare?from=&to=` | `openstash compare` (same key, definition-aware) |
+| `GET` | `/v1/specs/{specKey}/compare/definition` | operation (refs resolved) or raw schema from both versions |
 
 `specKey` and `version` are path segments — use `gitea` and `1.0.0`, not the CLI-style `gitea@1.0.0`.
 
@@ -145,6 +153,46 @@ curl http://localhost:8080/v1/specs/gitea/versions
 # {"key":"gitea","versions":["1.0.0"]}
 ```
 
+### 7. Version history
+
+Every version stored under a key forms a timeline. Versions are ordered by semver when they parse. `GET /v1/specs` and `/versions` list versions in the same order, so the last one is the latest:
+
+```bash
+curl http://localhost:8080/v1/specs/gitea/timeline
+# {"key":"gitea","versions":[{"version":"1.21.0","operations":412,...},...],
+#  "steps":[{"from":"1.21.0","to":"1.22.0","summary":{"operations":{"added":9,...},"schemas":{...}}}]}
+```
+
+Diff two versions:
+
+```bash
+curl 'http://localhost:8080/v1/specs/gitea/compare?from=1.21.0&to=1.22.0'
+```
+
+This is `openstash compare` plus definition-level detection. An operation whose `parameters`, `requestBody`, `responses`, `deprecated`, `security`, `servers`, `callbacks`, `consumes` or `produces` differ is listed under `operations.changed` with an empty object for each differing field (for example `"changes":{"parameters":{}}`). A schema whose definition differs gets `"definitionChanged":true`.
+
+Operations are compared as clients see them. Path-level parameters are merged in, and `$ref`s to shared parameters, request bodies, responses and response headers are resolved. So editing `components.parameters.Page` flags every operation that uses it. Document-level `security` (and Swagger 2 `consumes`/`produces`) applies when an operation doesn't set its own.
+
+A change confined to `x-*` vendor extensions (for example an `x-go-package` rename) also sets `"extensionsOnly":true`, so you can tell it apart from real changes. Changes to `info`, top-level `servers` or security scheme definitions on their own are not reported.
+
+Fetch both sides of one change to diff it yourself:
+
+```bash
+curl 'http://localhost:8080/v1/specs/gitea/compare/definition?from=1.21.0&to=1.22.0&method=GET&path=/user/repos'
+curl 'http://localhost:8080/v1/specs/gitea/compare/definition?from=1.21.0&to=1.22.0&schema=Repository'
+# {"baseline":{...}|null,"target":{...}|null,...}
+```
+
+For operations, both sides are in the same resolved form the compare uses, so a change behind a `$ref` shows up in the diff.
+
+### 8. One schema
+
+Equivalent to `openstash schema gitea@1.0.0 Repository --depth 1`:
+
+```bash
+curl 'http://localhost:8080/v1/specs/gitea/versions/1.0.0/schemas/Repository?depth=1'
+```
+
 ## From application code
 
 ### Python
@@ -183,7 +231,7 @@ const { hits } = await fetch(url).then((r) => r.json());
 
 These CLI commands have no HTTP equivalent yet:
 
-- `openstash compare`
+- `openstash compare` across different keys (same-key compare is `/v1/specs/{specKey}/compare`)
 - `openstash refresh`
 - `openstash curl`
 
@@ -193,3 +241,7 @@ The serve API has **no authentication**. It is meant for localhost or a trusted 
 
 - The CLI defaults to `127.0.0.1:8080`. Binding to `0.0.0.0` (as Docker does for port mapping) exposes the API to anyone who can reach the port.
 - `POST /v1/specs` fetches `from` URLs and reads local files on the server — do not expose an unauthenticated instance to untrusted networks.
+- `POST /v1/specs` only accepts `Content-Type: application/json`. Browsers send a cross-origin JSON request only after a CORS preflight, which the server never approves, so another site can't post a spec through a plain form or `fetch`.
+- A site could still use DNS rebinding: point its own domain at `127.0.0.1` so its pages count as same-origin with your server. The server blocks this by checking the `Host` header. When it's bound to a specific host (like the default `127.0.0.1:8080`), it only answers `localhost`, `*.localhost`, IP addresses, the bind host, and names you list in `--allowed-hosts` / `OPENSTASH_ALLOWED_HOSTS`. Anything else gets `403`.
+- With a wildcard bind (`--addr :8080` or `0.0.0.0`, as in Docker), any `Host` is accepted by default, so compose service names and LAN hostnames keep working. If you also browse from the machine running the container, set `OPENSTASH_ALLOWED_HOSTS` to the names you use (for example `localhost,openstash`) to turn the check on.
+- Schema expansion (`depth`) is capped per response. Refs past the cap come back as `{"$ref": ..., "$truncated": true}`, so a crafted spec can't make one request expand without bound.

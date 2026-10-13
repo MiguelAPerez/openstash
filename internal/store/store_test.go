@@ -1,6 +1,9 @@
 package store
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/MiguelAPerez/openstash/internal/spec"
@@ -164,5 +167,69 @@ func TestCompareVersion(t *testing.T) {
 		if got := compareVersion(tt.a, tt.b); got != tt.want {
 			t.Errorf("compareVersion(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
 		}
+	}
+}
+
+func TestSortVersions(t *testing.T) {
+	tests := []struct {
+		in, want []string
+	}{
+		{[]string{"1.10.0", "latest", "v1.2.0", "1.2.0-rc.1", "0.9.0"}, []string{"latest", "0.9.0", "1.2.0-rc.1", "v1.2.0", "1.10.0"}},
+		// Shorthands and numeric prerelease identifiers.
+		{[]string{"1.2", "1.10", "1.9"}, []string{"1.2", "1.9", "1.10"}},
+		{[]string{"10", "9", "2"}, []string{"2", "9", "10"}},
+		{[]string{"1.0.0-rc.2", "1.0.0-rc.10", "1.0.0-rc.1", "1.0.0"}, []string{"1.0.0-rc.1", "1.0.0-rc.2", "1.0.0-rc.10", "1.0.0"}},
+		// Semver ties (build metadata, v prefix) break by byte order.
+		{[]string{"1.0.0+b", "v1.0.0", "1.0.0+a", "1.0.0"}, []string{"1.0.0", "1.0.0+a", "1.0.0+b", "v1.0.0"}},
+	}
+	for _, tt := range tests {
+		vers := append([]string(nil), tt.in...)
+		SortVersions(vers)
+		if strings.Join(vers, ",") != strings.Join(tt.want, ",") {
+			t.Errorf("SortVersions(%v) = %v, want %v", tt.in, vers, tt.want)
+		}
+		// LatestVersion's pick must match the newest sorted entry for any input order.
+		if got := maxVersion(tt.in); got != tt.want[len(tt.want)-1] {
+			t.Errorf("maxVersion(%v) = %q, want %q", tt.in, got, tt.want[len(tt.want)-1])
+		}
+	}
+}
+
+func TestVersionsForKeySkipsIncompleteVersions(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := map[string]any{"openapi": "3.0.0", "info": map[string]any{"version": "1.0.0"}, "paths": map[string]any{}}
+	if _, _, err := s.Add("api", "1.0.0", "x", "", doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Add("api", "1.1 beta", "x", "", doc); err != nil {
+		t.Fatal(err)
+	}
+	// A stray directory, and one with a spec but no meta.json yet (Add in progress).
+	if err := os.MkdirAll(filepath.Join(s.Root, "specs", "api", "stray"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	partial := filepath.Join(s.Root, "specs", "api", "2.0.0")
+	if err := os.MkdirAll(partial, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(partial, "spec.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	vers, err := s.VersionsForKey("api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	SortVersions(vers)
+	// Versions come back as recorded in meta.json ("1.1 beta", stored in dir
+	// "1.1_beta"); non-semver sorts before semver.
+	if got := strings.Join(vers, ","); got != "1.1 beta,1.0.0" {
+		t.Fatalf("VersionsForKey = %q, want 1.1 beta,1.0.0", got)
+	}
+	if latest, err := s.LatestVersion("api"); err != nil || latest != "1.0.0" {
+		t.Fatalf("LatestVersion = %q, %v", latest, err)
 	}
 }

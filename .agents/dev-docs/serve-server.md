@@ -91,7 +91,9 @@ Publishing the image on release alongside the tar.gz binaries is wired up in `re
 
 - Auth / TLS — local dev only; bind to localhost or trusted network.
 - MCP or gRPC — HTTP first; same handlers can back MCP later.
-- Static UI or nginx — the value is the Go store/search API.
+- Static UI or nginx — the value is the Go store/search API. (Superseded: a React UI
+  built from `web/` is now embedded in the binary and served at `/`; see
+  `internal/server/ui.go`. Still no nginx — the Go server serves it.)
 - New dependencies — stdlib HTTP is enough unless routing grows unwieldy.
 
 ## Trust model
@@ -114,6 +116,20 @@ Defense in depth that *is* enforced regardless of bind address:
   `internal/server/handlers.go`) to prevent traversal out of the store root.
 - `POST /v1/specs` caps the request body (default 64 KiB, override via
   `OPENSTASH_MAX_BODY_BYTES` or `--max-body-bytes`) and rejects unknown JSON fields.
+- `POST /v1/specs` returns 415 unless `Content-Type` is `application/json`
+  (`isJSONContentType`). That forces a CORS preflight for any cross-origin
+  browser request, and the server never answers one, so another site can't
+  post through a form or simple `fetch` (CSRF). Keep this if you add CORS.
+- DNS rebinding gets around same-origin checks entirely, so `hostPolicy`
+  (`internal/server/host.go`) checks `Host` on every route. On a specific bind
+  it accepts localhost, `*.localhost`, IP literals, the bind host, and
+  `--allowed-hosts` / `OPENSTASH_ALLOWED_HOSTS`. Wildcard binds accept any Host
+  unless that list is set, so Docker setups reached by hostname keep working.
+- `spec.ResolveSchema` / `GetOperationDepth` share a node budget per call
+  (`maxResolvedNodes`). Shared refs fan out exponentially with depth, so depth
+  alone doesn't bound a response.
+- Store errors are logged; clients get a generic 500 without filesystem paths
+  (`writeStoreError`).
 
 ## Decisions (OpenAPI 3.1 aligned)
 

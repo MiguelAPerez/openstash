@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -551,5 +552,57 @@ func TestLookupFieldPath_CycleTerminates(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("LookupFieldPath did not terminate on a cyclic ref")
+	}
+}
+
+// A schema that refs the next one twice doubles at every level; the node
+// budget must keep the expansion bounded however deep the caller asks.
+func TestResolveSchemaBoundsFanOut(t *testing.T) {
+	schemas := map[string]any{}
+	const n = 30
+	for i := 0; i < n; i++ {
+		next := map[string]any{"$ref": fmt.Sprintf("#/components/schemas/S%d", i+1)}
+		node := map[string]any{"type": "object"}
+		if i < n-1 {
+			node["properties"] = map[string]any{"a": next, "b": next}
+		}
+		schemas[fmt.Sprintf("S%d", i)] = node
+	}
+	doc := map[string]any{"components": map[string]any{"schemas": schemas}}
+	root := map[string]any{"$ref": "#/components/schemas/S0"}
+
+	var count func(v any) int
+	truncated := false
+	count = func(v any) int {
+		switch t := v.(type) {
+		case map[string]any:
+			if t["$truncated"] == true {
+				truncated = true
+			}
+			c := 1
+			for _, child := range t {
+				c += count(child)
+			}
+			return c
+		case []any:
+			c := 0
+			for _, child := range t {
+				c += count(child)
+			}
+			return c
+		}
+		return 0
+	}
+	got := count(ResolveSchema(doc, root, 40))
+	if got > 2*maxResolvedNodes {
+		t.Fatalf("resolved %d nodes, want at most about %d", got, maxResolvedNodes)
+	}
+	if !truncated {
+		t.Fatal("expected unexpanded refs to be marked $truncated")
+	}
+	// Small expansions are untouched.
+	truncated = false
+	if r := ResolveSchema(doc, map[string]any{"$ref": "#/components/schemas/S27"}, 5); count(r) != 10 || truncated {
+		t.Fatalf("small expansion = %v, want S27 -> 2x S28 -> 4x S29 fully inlined (10 maps)", r)
 	}
 }

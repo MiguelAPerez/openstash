@@ -3,13 +3,17 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"mime"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/MiguelAPerez/openstash/internal/search"
 	"github.com/MiguelAPerez/openstash/internal/spec"
+	"github.com/MiguelAPerez/openstash/internal/store"
 )
 
 var validInScopes = map[string]bool{
@@ -31,6 +35,9 @@ func validatePathSegment(kind, value string) error {
 	}
 	if strings.ContainsAny(value, `/\@`) {
 		return fmt.Errorf("invalid %s: must not contain '/', '\\', or '@'", kind)
+	}
+	if strings.ContainsFunc(value, unicode.IsControl) {
+		return fmt.Errorf("invalid %s: must not contain control characters", kind)
 	}
 	return nil
 }
@@ -60,6 +67,14 @@ func (s *Server) handleListSpecs(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
+	// Same order as the timeline: by key, then version oldest to newest, so the
+	// last entry for a key is the one LatestVersion picks.
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].Key != entries[j].Key {
+			return entries[i].Key < entries[j].Key
+		}
+		return store.CompareVersions(entries[i].Version, entries[j].Version) < 0
+	})
 	enriched := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
 		enriched = append(enriched, map[string]any{
@@ -82,7 +97,20 @@ type addSpecRequest struct {
 	Endpoint string `json:"endpoint"`
 }
 
+// isJSONContentType reports whether the request declares an application/json
+// body. Requiring it on writes blocks cross-site form posts: browsers only send
+// a cross-origin JSON POST after a CORS preflight, which this server never
+// approves, while text/plain and form bodies would go through unchecked.
+func isJSONContentType(r *http.Request) bool {
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	return err == nil && mt == "application/json"
+}
+
 func (s *Server) handleAddSpec(w http.ResponseWriter, r *http.Request) {
+	if !isJSONContentType(r) {
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, s.maxBodyBytes)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
@@ -174,7 +202,7 @@ func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("not found: %s (run: openstash add)", specKey))
 		return
 	}
-	sort.Strings(vers)
+	store.SortVersions(vers)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"key":      specKey,
 		"versions": vers,
@@ -440,6 +468,9 @@ func writeResolveError(w http.ResponseWriter, err error) {
 	writeStoreError(w, err)
 }
 
+// writeStoreError reports an unexpected store failure. The details (which
+// include filesystem paths) go to the server log, not the client.
 func writeStoreError(w http.ResponseWriter, err error) {
-	writeError(w, http.StatusInternalServerError, err.Error())
+	log.Printf("openstash serve: store error: %v", err)
+	writeError(w, http.StatusInternalServerError, "internal error reading the store")
 }

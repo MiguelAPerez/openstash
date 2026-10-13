@@ -1,6 +1,7 @@
 package store
 
 import (
+	"sort"
 	"strings"
 
 	"golang.org/x/mod/semver"
@@ -9,11 +10,23 @@ import (
 func maxVersion(versions []string) string {
 	best := versions[0]
 	for _, v := range versions[1:] {
-		if compareVersion(v, best) > 0 {
+		if CompareVersions(v, best) > 0 {
 			best = v
 		}
 	}
 	return best
+}
+
+// CompareVersions orders two version strings: semver order when both parse
+// (shorthands like "1.2" count), any semver above any non-semver string, and
+// byte order otherwise. Versions semver treats as equal (build metadata, a "v"
+// prefix) fall back to byte order, so the order is total and LatestVersion
+// always agrees with the last entry of SortVersions.
+func CompareVersions(a, b string) int {
+	if c := compareVersion(a, b); c != 0 {
+		return c
+	}
+	return strings.Compare(a, b)
 }
 
 func compareVersion(a, b string) int {
@@ -43,4 +56,12 @@ func semverTag(v string) string {
 		return ""
 	}
 	return semver.Canonical(candidate)
+}
+
+// SortVersions orders versions oldest to newest with CompareVersions, the same
+// order LatestVersion uses: non-semver strings first (byte order), then semver.
+func SortVersions(versions []string) {
+	sort.Slice(versions, func(i, j int) bool {
+		return CompareVersions(versions[i], versions[j]) < 0
+	})
 }
