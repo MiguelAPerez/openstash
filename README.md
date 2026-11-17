@@ -60,7 +60,7 @@ Agents that can't run commands can use the [HTTP API](docs/serve-api.md) instead
 
 - [Install](docs/install.md): Homebrew, binaries, Docker, building from source
 - [CLI reference](docs/cli.md): every command, `key@version`, where specs are stored
-- [Web UI](docs/web-ui.md): Explore, Reference and the version timeline
+- [Web UI](docs/web-ui.md): Explore, Reference, the version timeline and the dependency graph
 - [HTTP API](docs/serve-api.md): run openstash as a server for tools and agents
 - [Benchmarks](bench/README.md): token cost and accuracy compared with raw specs
 - [Contributing](CONTRIBUTING.md)

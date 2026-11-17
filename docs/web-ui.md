@@ -6,7 +6,7 @@
 openstash serve      # then open http://127.0.0.1:8080
 ```
 
-Pick a spec in the sidebar, then switch between its three views.
+Pick a spec in the sidebar, then switch between its four views.
 
 ## Explore
 
@@ -41,6 +41,17 @@ To grow a timeline, press **Pull latest** in a spec's header: the server re-fetc
 ```bash
 openstash add gitea --from https://gitea.example/swagger.v1.json --version 1.23.0
 ```
+
+## Graph
+
+How endpoints and schemas connect: an endpoint links to every schema it uses (parameters, request body, responses, including through shared components), and a schema links to the schemas it references. Pick two versions and the graph colors what was added, removed or changed, so a changed schema shows every endpoint that depends on it.
+
+- **Changes** (the default) shows only what changed, plus what those nodes use and what uses them. **Everything** shows the whole spec.
+- Toggle added, removed and changed, endpoints and schemas. Changes that only touch `x-*` vendor extensions are hidden unless you include them.
+- Click a node to list what it uses and what uses it, with links to its diff in the timeline and to Explore. Double-click (or **Focus here**) to show just its neighborhood, one or two hops out.
+- Drag to pan, scroll to zoom, <kbd>Esc</kbd> to clear the selection, then the focus.
+
+With a single stored version, the graph shows its dependencies without change colors.
 
 ## Options
 
