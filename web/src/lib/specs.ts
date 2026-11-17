@@ -31,6 +31,8 @@ export interface SpecsContextValue {
   error?: Error;
   reload: () => void;
   openAdd: (prefillKey?: string) => void;
+  /** Shows a short status message in the app toast. */
+  notify: (message: string) => void;
 }
 
 export const SpecsContext = createContext<SpecsContextValue>({
@@ -38,6 +40,7 @@ export const SpecsContext = createContext<SpecsContextValue>({
   loading: true,
   reload: () => {},
   openAdd: () => {},
+  notify: () => {},
 });
 
 export const useSpecs = () => useContext(SpecsContext);

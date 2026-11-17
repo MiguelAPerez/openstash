@@ -47,6 +47,7 @@ func NewWithOptions(st *store.Store, addr string, maxBodyBytes int64, opts Optio
 	mux.HandleFunc("GET /v1/specs", s.handleListSpecs)
 	mux.HandleFunc("POST /v1/specs", s.handleAddSpec)
 	mux.HandleFunc("GET /v1/specs/{specKey}", s.handleDumpLatest)
+	mux.HandleFunc("POST /v1/specs/{specKey}/pull", s.handlePull)
 	mux.HandleFunc("GET /v1/specs/{specKey}/versions", s.handleListVersions)
 	mux.HandleFunc("GET /v1/specs/{specKey}/versions/{version}", s.handleDumpVersion)
 	mux.HandleFunc("GET /v1/specs/{specKey}/versions/{version}/operations", s.handleOperations)

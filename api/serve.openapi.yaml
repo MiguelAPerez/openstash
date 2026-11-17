@@ -83,6 +83,61 @@ paths:
                 type: object
         "404":
           $ref: "#/components/responses/NotFound"
+  /v1/specs/{specKey}/pull:
+    post:
+      summary: Pull a new version from the recorded source
+      description: >-
+        Re-fetches the source recorded on the key's latest stored version. When
+        the fetched document's info.version is not stored yet (as a version tag,
+        or as the info.version of the latest version), it is stored under that
+        version with the same source and endpoint and the response is 201.
+        Otherwise nothing is written and the response is 200. Requires
+        Content-Type application/json; the body is ignored.
+      operationId: pullSpec
+      parameters:
+        - $ref: "#/components/parameters/specKey"
+      responses:
+        "200":
+          description: Source still serves a stored version
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, key, version, remoteVersion, source]
+                properties:
+                  status:
+                    type: string
+                    const: up-to-date
+                  key:
+                    type: string
+                  version:
+                    type: string
+                    description: Stored version matching the source
+                  remoteVersion:
+                    type: string
+                    description: info.version of the fetched document
+                  source:
+                    type: string
+        "201":
+          description: New version stored
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/AddSpecResponse"
+                  - type: object
+                    properties:
+                      previous:
+                        type: string
+                        description: Latest version before the pull
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
   /v1/specs/{specKey}/versions:
     get:
       summary: List stored versions for a key

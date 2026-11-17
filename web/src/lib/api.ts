@@ -118,6 +118,10 @@ export interface DefinitionPair {
   target: Json;
 }
 
+export type PullResult =
+  | { status: "up-to-date"; key: string; version: string; remoteVersion: string; source: string }
+  | { status: "added"; previous: string; meta: SpecEntry; indexed: number; schemas: number };
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -168,6 +172,13 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+    }),
+
+  pullSpec: (key: string) =>
+    request<PullResult>(`/v1/specs/${seg(key)}/pull`, undefined, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
     }),
 
   specUrl: (key: string, version: string) => `/v1/specs/${seg(key)}/versions/${seg(version)}`,

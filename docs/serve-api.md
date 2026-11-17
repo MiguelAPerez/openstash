@@ -56,6 +56,7 @@ All endpoints return JSON. Errors look like `{"error":"..."}` with an appropriat
 | `GET` | `/v1/specs` | `openstash list` |
 | `POST` | `/v1/specs` | `openstash add` |
 | `GET` | `/v1/specs/{specKey}` | `openstash dump` (latest) |
+| `POST` | `/v1/specs/{specKey}/pull` | re-fetch the source, add it if `info.version` is new |
 | `GET` | `/v1/specs/{specKey}/versions` | list stored versions |
 | `GET` | `/v1/specs/{specKey}/versions/{version}` | `openstash dump` (pinned) |
 | `GET` | `/v1/specs/{specKey}/versions/{version}/operations` | `openstash search` / `show` / `gather` |
@@ -153,7 +154,19 @@ curl http://localhost:8080/v1/specs/gitea/versions
 # {"key":"gitea","versions":["1.0.0"]}
 ```
 
-### 7. Version history
+### 7. Pull a new version
+
+Re-fetch the source recorded on the latest stored version. If the document's `info.version` isn't stored yet, it's added under that version with the same source and endpoint:
+
+```bash
+curl -X POST http://localhost:8080/v1/specs/gitea/pull -H 'Content-Type: application/json'
+# 201 {"status":"added","previous":"1.26.2","meta":{"version":"28.1.0",...},"indexed":537,"schemas":225}
+# 200 {"status":"up-to-date","key":"gitea","version":"28.1.0","remoteVersion":"28.1.0","source":"..."}
+```
+
+A source that changed without bumping `info.version` counts as up to date; add it with an explicit `version` instead.
+
+### 8. Version history
 
 Every version stored under a key forms a timeline. Versions are ordered by semver when they parse. `GET /v1/specs` and `/versions` list versions in the same order, so the last one is the latest:
 
@@ -185,7 +198,7 @@ curl 'http://localhost:8080/v1/specs/gitea/compare/definition?from=1.21.0&to=1.2
 
 For operations, both sides are in the same resolved form the compare uses, so a change behind a `$ref` shows up in the diff.
 
-### 8. One schema
+### 9. One schema
 
 Equivalent to `openstash schema gitea@1.0.0 Repository --depth 1`:
 
