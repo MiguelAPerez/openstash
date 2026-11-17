@@ -41,6 +41,7 @@ export function App() {
       error: specs.status === "error" ? specs.error : undefined,
       reload,
       openAdd,
+      notify: setToast,
     }),
     [specs, reload, openAdd],
   );

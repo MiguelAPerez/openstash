@@ -36,7 +36,7 @@ Changes count when an operation's parameters, request body, responses, security 
 
 Keyboard: <kbd>j</kbd>/<kbd>k</kbd> next and previous change, <kbd>[</kbd>/<kbd>]</kbd> older and newer step.
 
-To grow a timeline, add another version under the same key, from the CLI or with **+ Add** in the UI:
+To grow a timeline, press **Pull latest** in a spec's header: the server re-fetches its source and adds it as a new version when its `info.version` changed (otherwise it tells you the spec is up to date). Or add another version under the same key, from the CLI or with **+ Add** in the UI:
 
 ```bash
 openstash add gitea --from https://gitea.example/swagger.v1.json --version 1.23.0
