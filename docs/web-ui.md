@@ -49,6 +49,7 @@ How endpoints and schemas connect: an endpoint links to every schema it uses (pa
 - **Changes** (the default) shows only what changed, plus what those nodes use and what uses them. **Everything** shows the whole spec.
 - Toggle added, removed and changed, endpoints and schemas. Changes that only touch `x-*` vendor extensions are hidden unless you include them.
 - Click a node to list what it uses and what uses it, with links to its diff in the timeline and to Explore. Double-click (or **Focus here**) to show just its neighborhood, one or two hops out.
+- **Play** steps through every pair of consecutive versions, oldest first, at 1, 2 or 4 seconds a step. The selection and focus carry over, so you can follow one schema or endpoint through its history. <kbd>[</kbd> and <kbd>]</kbd> (or the arrows beside Play) move one step at a time.
 - Drag to pan, scroll to zoom, <kbd>Esc</kbd> to clear the selection, then the focus.
 
 With a single stored version, the graph shows its dependencies without change colors.

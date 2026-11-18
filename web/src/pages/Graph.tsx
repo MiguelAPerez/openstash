@@ -1,13 +1,14 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { Method } from "../components/Method";
 import { SpecHeader } from "../components/SpecHeader";
-import { api } from "../lib/api";
+import { api, type CompareResult } from "../lib/api";
 import {
   buildGraph,
   extractRefs,
   isChange,
   selectView,
   type ChangeStatus,
+  type DocRefs,
   type GraphEdge,
   type GraphNode,
   type SpecGraph,
@@ -27,6 +28,8 @@ const LABEL_ALL_MAX = 60;
 /** Label a selected node's neighbors only when it has at most this many. */
 const NEAR_LABEL_MAX = 16;
 const MAX_LIST = 40;
+/** Seconds per step when playing through versions. */
+const SPEEDS = [1, 2, 4];
 
 export function Graph({ route }: { route: GraphRoute }) {
   const { key, query } = route;
@@ -76,26 +79,40 @@ export function Graph({ route }: { route: GraphRoute }) {
     [key, query],
   );
 
+  // Each version's refs and each pair's compare are fetched once, so stepping
+  // back and forth (or playing) reuses them, and the next step can prefetch.
+  const cache = useRef({ refs: new Map<string, Promise<DocRefs>>(), compare: new Map<string, Promise<CompareResult>>() });
+  const refsOf = useCallback(
+    (v: string) => cached(cache.current.refs, v, () => api.dump(key, v).then(extractRefs)),
+    [key],
+  );
+  const compareOf = useCallback(
+    (a: string, b: string) => cached(cache.current.compare, `${a}\n${b}`, () => api.compare(key, a, b)),
+    [key],
+  );
+
   const [statuses, setStatuses] = useState<Set<ChangeStatus>>(() => new Set(ALL_STATUSES));
   const [includeNoise, setIncludeNoise] = useState(false);
   const [neighbors, setNeighbors] = useState(true);
   const [showOperations, setShowOperations] = useState(true);
   const [showSchemas, setShowSchemas] = useState(true);
 
+  // keepPrevious: the current graph stays up while the next pair loads, so
+  // stepping through versions doesn't flash a loading screen.
   const graph = useAsync(
-    async (signal): Promise<SpecGraph | null> => {
+    async (): Promise<SpecGraph | null> => {
       if (!from || !to) return null;
       const [a, b, cmp] = await Promise.all([
-        api.dump(key, from, signal),
-        diffing ? api.dump(key, to, signal) : null,
-        diffing ? api.compare(key, from, to, signal) : null,
+        refsOf(from),
+        diffing ? refsOf(to) : null,
+        diffing ? compareOf(from, to) : null,
       ]);
-      const refsA = extractRefs(a);
-      return buildGraph(refsA, b ? extractRefs(b) : refsA, cmp);
+      return buildGraph(a, b ?? a, cmp);
     },
     [key, from, to],
+    true,
   );
-  const g = graph.status === "ok" ? graph.data : null;
+  const g = graph.data ?? null;
 
   const opts: ViewOptions = useMemo(
     () => ({
@@ -112,12 +129,14 @@ export function Graph({ route }: { route: GraphRoute }) {
   );
   const view = useMemo(() => (g ? selectView(g, opts) : null), [g, opts]);
 
-  // Reuse the previous positions so filter changes don't reshuffle the picture.
-  const previous = useRef<Map<string, Point> | undefined>(undefined);
+  // Every node keeps the last position it was laid out at, so filter changes
+  // and version steps nudge the picture instead of reshuffling it, and a node
+  // that leaves the view comes back where it was.
+  const placed = useRef(new Map<string, Point>());
   const positions = useMemo(() => {
     if (!view) return null;
-    const p = layoutGraph(view.nodes, view.edges, previous.current);
-    previous.current = p;
+    const p = layoutGraph(view.nodes, view.edges, placed.current);
+    for (const [id, pt] of p) placed.current.set(id, pt);
     return p;
   }, [view]);
 
@@ -142,10 +161,64 @@ export function Graph({ route }: { route: GraphRoute }) {
     setSearch("");
   };
 
+  // Consecutive version pairs, oldest first: what Play walks through.
+  const steps = useMemo(() => versions.slice(1).map((v, i) => ({ from: versions[i], to: v })), [versions]);
+  const stepIndex = steps.findIndex((s) => s.from === from && s.to === to);
+  // Older/Newer step from the current one. From a custom range they snap to
+  // the single steps around the range's newer end (as on the timeline).
+  const stepTarget = (delta: number) => {
+    if (stepIndex >= 0) return steps[stepIndex + delta];
+    const end = steps.findIndex((s) => s.to === to);
+    if (end >= 0) return steps[delta < 0 ? end : end + 1];
+    return delta > 0 ? steps.find((s) => s.from === to) : undefined;
+  };
+  // Keeps the selection and focus, so one node can be followed through versions.
+  const goStep = (s: { from: string; to: string } | undefined) => s && go({ from: s.from, to: s.to });
+  // The play timer calls the latest goStep, so a node picked mid-step is kept.
+  const goStepRef = useRef(goStep);
+  goStepRef.current = goStep;
+
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(2);
+  const moveStep = (delta: number) => {
+    setPlaying(false);
+    goStep(stepTarget(delta));
+  };
+  const togglePlay = () => {
+    if (playing) return setPlaying(false);
+    // From a custom range or the newest step, start over from the oldest.
+    if (stepIndex < 0 || stepIndex === steps.length - 1) goStep(steps[0]);
+    setPlaying(true);
+  };
+
+  // Playing: once a step has loaded, show it for `speed` seconds, then move on;
+  // stop after the newest step. The next step loads in the meantime.
+  const ready = graph.status === "ok";
+  const failed = graph.status === "error";
+  useEffect(() => {
+    if (!playing || stepIndex < 0) return;
+    if (failed) return setPlaying(false);
+    const next = steps[stepIndex + 1];
+    if (!next) {
+      if (ready) setPlaying(false);
+      return;
+    }
+    void refsOf(next.to).catch(() => {});
+    void compareOf(next.from, next.to).catch(() => {});
+    if (!ready) return;
+    const t = setTimeout(() => goStepRef.current(next), speed * 1000);
+    return () => clearTimeout(t);
+  }, [playing, stepIndex, ready, failed, speed, steps, refsOf, compareOf]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (e.key !== "Escape" || t.tagName === "INPUT" || t.tagName === "SELECT") return;
+      if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
+      if (e.key === "[" || e.key === "]") {
+        moveStep(e.key === "[" ? -1 : 1);
+        return;
+      }
+      if (e.key !== "Escape") return;
       if (selected) select(null);
       else if (focus) go({ focus: undefined });
     };
@@ -184,7 +257,10 @@ export function Graph({ route }: { route: GraphRoute }) {
               id="graph-from"
               className="select"
               value={from}
-              onChange={(e) => go({ from: e.target.value, to, node: undefined, focus: undefined })}
+              onChange={(e) => {
+                setPlaying(false);
+                go({ from: e.target.value, to, node: undefined, focus: undefined });
+              }}
             >
               {versions.map((v) => (
                 <option key={v}>{v}</option>
@@ -195,7 +271,10 @@ export function Graph({ route }: { route: GraphRoute }) {
               className="select"
               aria-label="Compare to"
               value={to}
-              onChange={(e) => go({ from, to: e.target.value, node: undefined, focus: undefined })}
+              onChange={(e) => {
+                setPlaying(false);
+                go({ from, to: e.target.value, node: undefined, focus: undefined });
+              }}
             >
               {versions.map((v) => (
                 <option key={v}>{v}</option>
@@ -206,6 +285,55 @@ export function Graph({ route }: { route: GraphRoute }) {
           <span className="muted small">
             Only one version stored: showing its dependencies. Add another version to see what changes touch.
           </span>
+        )}
+        {steps.length > 1 && (
+          <div className="graph-play" role="group" aria-label="Step through versions">
+            <button
+              type="button"
+              className="btn btn-small"
+              aria-label="Older step"
+              title="Older step ( [ )"
+              onClick={() => moveStep(-1)}
+              disabled={!stepTarget(-1)}
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className={`btn btn-small play-button ${playing ? "" : "btn-primary"}`}
+              onClick={togglePlay}
+              aria-pressed={playing}
+              title={playing ? "Pause" : "Play through every version, oldest first"}
+            >
+              {playing ? "❚❚ Pause" : "▶ Play"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              aria-label="Newer step"
+              title="Newer step ( ] )"
+              onClick={() => moveStep(1)}
+              disabled={!stepTarget(1)}
+            >
+              →
+            </button>
+            <select
+              className="select"
+              aria-label="Seconds per step"
+              value={speed}
+              onChange={(e) => setSpeed(Number(e.target.value))}
+            >
+              {SPEEDS.map((s) => (
+                <option key={s} value={s}>
+                  {s}s / step
+                </option>
+              ))}
+            </select>
+            <span className="muted small">
+              {stepIndex >= 0 ? `step ${stepIndex + 1} of ${steps.length}` : "custom range"}
+              {graph.status === "loading" && g && " · loading…"}
+            </span>
+          </div>
         )}
         <span className="spacer" />
         <input
@@ -288,7 +416,7 @@ export function Graph({ route }: { route: GraphRoute }) {
       )}
 
       {graph.status === "error" && <p className="notice">{graph.error.message}</p>}
-      {graph.status === "loading" && (
+      {graph.status === "loading" && !g && (
         <div className="skeleton">{diffing ? `Comparing ${from} → ${to}…` : `Loading ${to}…`}</div>
       )}
 
@@ -810,4 +938,15 @@ function NodeList({
       )}
     </section>
   );
+}
+
+/** Memoizes a promise by key; a failed load is forgotten so it can be retried. */
+function cached<T>(m: Map<string, Promise<T>>, k: string, load: () => Promise<T>): Promise<T> {
+  let p = m.get(k);
+  if (!p) {
+    p = load();
+    m.set(k, p);
+    p.catch(() => m.delete(k));
+  }
+  return p;
 }
