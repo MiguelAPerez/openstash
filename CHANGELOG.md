@@ -1,3 +1,10 @@
+## v0.7.0 (2026-11-17)
+
+### Feat
+
+- Graph tab showing how endpoints and schemas connect across versions (#17)
+- pull a new spec version from its source (#16)
+
 ## v0.6.0 (2026-10-13)
 
 ### Feat
