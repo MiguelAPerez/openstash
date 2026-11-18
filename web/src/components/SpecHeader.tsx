@@ -3,7 +3,7 @@ import { api } from "../lib/api";
 import { href, navigate } from "../lib/route";
 import { formatDateTime, useSpecs } from "../lib/specs";
 
-type Tab = "explore" | "reference" | "timeline";
+type Tab = "explore" | "reference" | "timeline" | "graph";
 
 /** Re-fetches the latest version's source and stores it if its info.version is new. */
 function PullButton({ specKey, source }: { specKey: string; source: string }) {
@@ -48,12 +48,14 @@ export function SpecHeader({ specKey, version, tab }: { specKey: string; version
   const group = groups.find((g) => g.key === specKey);
   const v = version ?? group?.latest.version;
   const entry = group?.versions.find((e) => e.version === v);
+  // Timeline and Graph span versions, so they have no version picker or source line.
+  const versionless = tab === "timeline" || tab === "graph";
 
   return (
     <header className="spec-header">
       <div className="spec-title-row">
         <h1>{specKey}</h1>
-        {group && v && tab !== "timeline" && (
+        {group && v && !versionless && (
           <select
             className="select"
             aria-label="Version"
@@ -72,7 +74,7 @@ export function SpecHeader({ specKey, version, tab }: { specKey: string; version
           </select>
         )}
       </div>
-      {entry && tab !== "timeline" && (
+      {entry && !versionless && (
         <div className="meta-row">
           <span className="truncate" title={entry.source}>
             source <strong>{entry.source}</strong>
@@ -99,6 +101,9 @@ export function SpecHeader({ specKey, version, tab }: { specKey: string; version
         <a className="tab" href={href.timeline(specKey)} aria-current={tab === "timeline" ? "page" : undefined}>
           Timeline
           {group && group.versions.length > 1 && <span className="tab-count">{group.versions.length}</span>}
+        </a>
+        <a className="tab" href={href.graph(specKey)} aria-current={tab === "graph" ? "page" : undefined}>
+          Graph
         </a>
         <span className="spacer" />
         {group?.latest.source && <PullButton specKey={specKey} source={group.latest.source} />}

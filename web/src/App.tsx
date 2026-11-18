@@ -7,6 +7,7 @@ import { href, useRoute } from "./lib/route";
 import { groupSpecs, SpecsContext } from "./lib/specs";
 import { useAsync } from "./lib/useAsync";
 import { Explore } from "./pages/Explore";
+import { Graph } from "./pages/Graph";
 import { Home } from "./pages/Home";
 import { Reference } from "./pages/Reference";
 import { Timeline } from "./pages/Timeline";
@@ -49,15 +50,15 @@ export function App() {
   const pageKey =
     route.name === "explore" || route.name === "reference"
       ? `${route.name}:${route.key}@${route.version}`
-      : route.name === "timeline"
-        ? `timeline:${route.key}`
+      : route.name === "timeline" || route.name === "graph"
+        ? `${route.name}:${route.key}`
         : route.name;
 
   const currentRef =
     route.name === "explore" || route.name === "reference"
       ? `${route.key}@${route.version}`
-      : route.name === "timeline"
-        ? `${route.key} · timeline`
+      : route.name === "timeline" || route.name === "graph"
+        ? `${route.key} · ${route.name}`
         : "";
 
   return (
@@ -100,6 +101,7 @@ export function App() {
             {route.name === "explore" && <Explore key={pageKey} route={route} />}
             {route.name === "reference" && <Reference key={pageKey} route={route} />}
             {route.name === "timeline" && <Timeline key={pageKey} route={route} />}
+            {route.name === "graph" && <Graph key={pageKey} route={route} />}
             {route.name === "notFound" && (
               <div className="empty">
                 Page not found. <a href={href.home()}>Back to all specs</a>

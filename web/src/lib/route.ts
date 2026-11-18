@@ -7,6 +7,7 @@ export type Route =
   | { name: "explore"; key: string; version: string; query: URLSearchParams }
   | { name: "reference"; key: string; version: string; query: URLSearchParams }
   | { name: "timeline"; key: string; query: URLSearchParams }
+  | { name: "graph"; key: string; query: URLSearchParams }
   | { name: "notFound" };
 
 export function parseHash(hash: string): Route {
@@ -20,6 +21,7 @@ export function parseHash(hash: string): Route {
   if (parts[0] !== "specs" || parts.length < 3) return { name: "notFound" };
   const key = parts[1];
   if (parts.length === 3 && parts[2] === "timeline") return { name: "timeline", key, query };
+  if (parts.length === 3 && parts[2] === "graph") return { name: "graph", key, query };
   if (parts[2] === "versions" && parts.length >= 4) {
     const version = parts[3];
     if (parts.length === 4) return { name: "explore", key, version, query };
@@ -54,6 +56,7 @@ export const href = {
     withQuery(`#/specs/${enc(key)}/versions/${enc(version)}/reference`, query),
   timeline: (key: string, query?: Record<string, string | undefined>) =>
     withQuery(`#/specs/${enc(key)}/timeline`, query),
+  graph: (key: string, query?: Record<string, string | undefined>) => withQuery(`#/specs/${enc(key)}/graph`, query),
 };
 
 /** Navigate to a hash href. replace=true avoids a history entry (for typing). */
