@@ -490,13 +490,13 @@ function GraphCanvas({
     if (d && !d.moved) onSelect(null);
   };
 
-  // Keep the selected node on screen when it's picked from the side panel or search.
-  const lastCentered = useRef("");
+  // Keep the selected node on screen when it's picked from the side panel or
+  // search, or when a new layout moves it. Panning never re-runs this, so the
+  // user can still move the selection out of view.
   useEffect(() => {
     const el = svg.current;
     const p = positions.get(selected);
-    if (!el || !p || lastCentered.current === selected) return;
-    lastCentered.current = selected;
+    if (!el || !p) return;
     const { width, height } = el.getBoundingClientRect();
     setT((cur) => {
       const sx = p.x * cur.k + cur.x;
